@@ -4,7 +4,7 @@ export interface World {
   name: string
   file: string
   size: number
-  modified_at: string
+  modified_at: number
   active: boolean
 }
 

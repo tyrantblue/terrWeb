@@ -838,9 +838,7 @@ function formatSize(
 /* ------------------------------ */
 
 function formatDate(
-  value: string,
+  value: number,
 ) {
-  return new Date(
-    value,
-  ).toLocaleString()
+  return new Date(value * 1000).toLocaleString()
 }

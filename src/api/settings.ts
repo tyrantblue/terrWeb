@@ -1,20 +1,56 @@
 import { apiFetch } from './client'
 
+export interface ConfigResponse {
+  values: Record<string, string>
+  editable_keys: string[]
+  runtime_keys: string[]
+  restart_keys: string[]
+  path: string
+}
 
-export function updateMaxPlayers(
-  maxPlayers: number,
+export interface ConfigUpdateResponse {
+  persisted: string[]
+  changed: string[]
+  applied: string[]
+  requires_restart: string[]
+  operation_id?: string
+}
+
+export function getConfig() {
+  return apiFetch<ConfigResponse>(
+    '/api/v1/config',
+  )
+}
+
+export function updateConfig(
+  values: Record<string, string | number>,
+  confirmLowMaxPlayers = false,
 ) {
-  return apiFetch(
-    '/api/server/maxplayers',
+  return apiFetch<ConfigUpdateResponse>(
+    '/api/v1/config',
     {
-      method: 'POST',
+      method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        max_players: maxPlayers,
+        values,
+        apply: true,
+        ...(confirmLowMaxPlayers
+          ? { confirm_low_max_players: true }
+          : {}),
       }),
     },
+  )
+}
+
+export function updateMaxPlayers(
+  maxPlayers: number,
+  confirmLowMaxPlayers = false,
+) {
+  return updateConfig(
+    { maxplayers: maxPlayers },
+    confirmLowMaxPlayers,
   )
 }
 
@@ -22,34 +58,12 @@ export function updateMaxPlayers(
 export function updateMotd(
   motd: string,
 ) {
-  return apiFetch(
-    '/api/server/motd',
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        motd,
-      }),
-    },
-  )
+  return updateConfig({ motd })
 }
 
 
 export function updatePassword(
   password: string,
 ) {
-  return apiFetch(
-    '/api/server/password',
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        password,
-      }),
-    },
-  )
+  return updateConfig({ password })
 }

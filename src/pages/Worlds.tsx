@@ -22,6 +22,7 @@ import {
   getWorlds,
   switchWorld,
   uploadWorldWithProgress,
+  waitForOperation,
   type World,
 } from '../api/world'
 
@@ -77,6 +78,9 @@ export default function Worlds() {
 
   const [switching, setSwitching] =
     useState<string | null>(null)
+
+  const [switchProgress, setSwitchProgress] =
+    useState(0)
 
   const [message, setMessage] =
     useState('')
@@ -235,12 +239,26 @@ export default function Worlds() {
 
     try {
       setSwitching(file)
+      setSwitchProgress(0)
 
       setMessage(
         'Switching world...',
       )
 
-      await switchWorld(file)
+      const operation = await switchWorld(file)
+
+      await waitForOperation(
+        operation.operation_id,
+        (current) => {
+          setSwitchProgress(
+            current.progress ?? 0,
+          )
+
+          if (current.message) {
+            setMessage(current.message)
+          }
+        },
+      )
 
       setMessage(
         `Switched to ${file}`,
@@ -259,6 +277,7 @@ export default function Worlds() {
 
     } finally {
       setSwitching(null)
+      setSwitchProgress(0)
     }
   }
 
@@ -548,6 +567,7 @@ export default function Worlds() {
               <WorldCard
                 world={activeWorld}
                 switching={switching}
+                switchProgress={switchProgress}
                 onSwitch={handleSwitchRequest}
               />
 
@@ -592,6 +612,7 @@ export default function Worlds() {
                       key={world.file}
                       world={world}
                       switching={switching}
+                      switchProgress={switchProgress}
                       onSwitch={handleSwitchRequest}
                     />
                   ),
@@ -885,10 +906,12 @@ function UploadProgressDialog({
 function WorldCard({
   world,
   switching,
+  switchProgress,
   onSwitch,
 }: {
   world: World
   switching: string | null
+  switchProgress: number
   onSwitch: (
     world: World,
   ) => void
@@ -1137,8 +1160,8 @@ function WorldCard({
 
         {isActive
           ? 'Current World'
-          : switching === world.file
-            ? 'Switching...'
+            : switching === world.file
+            ? `Switching... ${switchProgress}%`
             : 'Switch to this world'}
 
       </button>

@@ -388,14 +388,14 @@ export default function Dashboard() {
           }
         >
 
-          {status?.players.list.length ? (
+          {status?.players.players.length ? (
 
             <div className="space-y-2">
 
-              {status.players.list.map(
+              {status.players.players.map(
                 (player) => (
                   <div
-                    key={player}
+                    key={player.name}
                     className={[
                       'flex items-center',
                       'rounded-lg',
@@ -418,7 +418,7 @@ export default function Dashboard() {
                       />
 
                       <span className="text-sm text-gray-300">
-                        {player}
+                    {player.name}
                       </span>
 
                     </div>

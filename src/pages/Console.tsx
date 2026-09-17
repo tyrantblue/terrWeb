@@ -14,13 +14,15 @@ import {
 
 import {
   createConsoleWebSocket,
+  getConsole,
   sendCommand,
+  type ConsoleLine,
 } from '../api/console'
 
 
 export default function Console() {
   const [lines, setLines] =
-    useState<string[]>([])
+    useState<ConsoleLine[]>([])
 
   const [command, setCommand] =
     useState('')
@@ -33,6 +35,9 @@ export default function Console() {
 
   const [error, setError] =
     useState(false)
+
+  const [commandError, setCommandError] =
+    useState('')
 
 
   const terminalRef =
@@ -57,8 +62,16 @@ export default function Console() {
       return
     }
 
+    if (/^exit(?:-nosave)?$/i.test(value)) {
+      setCommandError(
+        'Shutdown commands are blocked. Use a managed server action instead.',
+      )
+      return
+    }
+
     try {
       setSending(true)
+      setCommandError('')
 
       await sendCommand(value)
 
@@ -70,6 +83,12 @@ export default function Console() {
       console.error(
         'Failed to send command:',
         error,
+      )
+
+      setCommandError(
+        error instanceof Error
+          ? error.message
+          : 'Failed to send command.',
       )
 
     } finally {
@@ -85,6 +104,31 @@ export default function Console() {
 
   useEffect(() => {
     let disposed = false
+
+    getConsole()
+      .then((response) => {
+        if (!disposed) {
+          setLines((current) => {
+            const byOffset = new Map(
+              [...response.lines, ...current].map(
+                (line) => [line.offset, line],
+              ),
+            )
+
+            return Array.from(byOffset.values())
+              .sort((left, right) =>
+                left.offset - right.offset,
+              )
+              .slice(-1000)
+          })
+        }
+      })
+      .catch((loadError) => {
+        console.error(
+          'Failed to load console history:',
+          loadError,
+        )
+      })
 
     const socket =
       createConsoleWebSocket()
@@ -109,17 +153,42 @@ export default function Console() {
         return
       }
 
-      const text =
-        String(event.data)
+      let message: {
+        type?: string
+        offset?: number
+        kind?: string
+        text?: string
+      }
 
-      const newLines =
-        text.split(/\r?\n/)
+      try {
+        message = JSON.parse(
+          String(event.data),
+        )
+      } catch {
+        return
+      }
+
+      if (
+        message.type !== 'console.line' ||
+        typeof message.text !== 'string'
+      ) {
+        return
+      }
+
+      const newLine: ConsoleLine = {
+        offset: message.offset ?? Date.now(),
+        kind: message.kind ?? 'output',
+        text: message.text,
+      }
 
       setLines((previous) => {
-        const combined = [
-          ...previous,
-          ...newLines,
-        ]
+        if (previous.some(
+          (line) => line.offset === newLine.offset,
+        )) {
+          return previous
+        }
+
+        const combined = [...previous, newLine]
 
         return combined.slice(-1000)
       })
@@ -340,16 +409,16 @@ export default function Console() {
           ) : (
 
             lines.map(
-              (line, index) => (
+              (line) => (
                 <div
-                  key={`${index}-${line}`}
+                  key={line.offset}
                   className={[
                     'whitespace-pre-wrap',
                     'break-all',
-                    'text-gray-400',
+                    getConsoleLineClass(line.kind),
                   ].join(' ')}
                 >
-                  {line}
+                  {line.text}
                 </div>
               ),
             )
@@ -431,6 +500,12 @@ export default function Console() {
 
         </form>
 
+        {commandError && (
+          <div className="border-t border-red-500/10 bg-red-500/[0.04] px-4 py-2 text-xs text-red-400">
+            {commandError}
+          </div>
+        )}
+
       </div>
 
 
@@ -485,4 +560,22 @@ export default function Console() {
 
     </div>
   )
+}
+
+function getConsoleLineClass(kind: string) {
+  switch (kind) {
+    case 'error':
+      return 'text-red-400'
+    case 'chat':
+      return 'text-cyan-300'
+    case 'player_join':
+      return 'text-emerald-400'
+    case 'player_leave':
+    case 'disconnect':
+      return 'text-amber-400'
+    case 'prompt':
+      return 'text-gray-600'
+    default:
+      return 'text-gray-400'
+  }
 }

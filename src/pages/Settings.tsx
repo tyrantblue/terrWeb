@@ -17,8 +17,11 @@ import {
   getServerStatus,
   type ServerStatus,
 } from '../api/server'
+import { ApiError } from '../api/client'
+import ConfirmDialog from '../components/ConfirmDialog'
 
 import {
+  getConfig,
   updateMaxPlayers,
   updateMotd,
   updatePassword,
@@ -50,22 +53,31 @@ export default function Settings() {
   const [showPassword, setShowPassword] =
     useState(false)
 
+  const [pendingLowMaxPlayers, setPendingLowMaxPlayers] =
+    useState<number | null>(null)
+
 
   async function loadSettings() {
     try {
       setLoading(true)
       setMessage('')
 
-      const data =
-        await getServerStatus()
+      const [data, config] =
+        await Promise.all([
+          getServerStatus(),
+          getConfig(),
+        ])
 
       setStatus(data)
 
       setMaxPlayers(
-        String(data.max_players),
+        config.values.maxplayers ??
+          String(data.max_players ?? ''),
       )
 
-      setMotd(data.motd)
+      setMotd(
+        config.values.motd ?? data.motd ?? '',
+      )
 
     } catch (error) {
       console.error(
@@ -115,6 +127,44 @@ export default function Settings() {
     } catch (error) {
       console.error(error)
 
+      if (
+        error instanceof ApiError &&
+        error.status === 409 &&
+        value < 64
+      ) {
+        setPendingLowMaxPlayers(value)
+        setMessage(
+          'Low player limits require confirmation.',
+        )
+        return
+      }
+
+      setMessage(
+        'Failed to update max players.',
+      )
+    } finally {
+      setSaving(null)
+    }
+  }
+
+
+  async function confirmLowMaxPlayers() {
+    if (pendingLowMaxPlayers === null) {
+      return
+    }
+
+    const value = pendingLowMaxPlayers
+
+    try {
+      setSaving('maxplayers')
+      await updateMaxPlayers(value, true)
+      setPendingLowMaxPlayers(null)
+      setMessage(
+        `Max players updated to ${value}.`,
+      )
+      await loadSettings()
+    } catch (error) {
+      console.error(error)
       setMessage(
         'Failed to update max players.',
       )
@@ -599,6 +649,20 @@ export default function Settings() {
         Changes are applied directly to the running
         Terraria server.
       </div>
+
+      <ConfirmDialog
+        open={pendingLowMaxPlayers !== null}
+        onOpenChange={(open) => {
+          if (!open && saving === null) {
+            setPendingLowMaxPlayers(null)
+          }
+        }}
+        title="Use a low player limit?"
+        description={`A limit below 64 can appear full because unsolicited connections consume slots. Continue with ${pendingLowMaxPlayers ?? ''} players?`}
+        confirmText="Use this limit"
+        onConfirm={confirmLowMaxPlayers}
+        loading={saving === 'maxplayers'}
+      />
 
     </div>
   )

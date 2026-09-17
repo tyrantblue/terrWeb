@@ -1,14 +1,27 @@
-import { apiFetch } from './client'
+import { API_BASE_URL, apiFetch } from './client'
 
-
-export interface ConsoleResponse {
-  lines: string[]
+export interface ConsoleLine {
+  offset: number
+  kind: string
+  text: string
 }
 
 
-export function getConsole() {
+export interface ConsoleResponse {
+  lines: ConsoleLine[]
+  cursor: number
+}
+
+
+export function getConsole(
+  cursor?: number,
+) {
+  const query = cursor === undefined
+    ? '?tail=200'
+    : `?since=${cursor}`
+
   return apiFetch<ConsoleResponse>(
-    '/api/server/console',
+    `/api/v1/console${query}`,
   )
 }
 
@@ -17,7 +30,7 @@ export function sendCommand(
   command: string,
 ) {
   return apiFetch(
-    '/api/server/command',
+    '/api/v1/console/commands',
     {
       method: 'POST',
       headers: {
@@ -32,7 +45,15 @@ export function sendCommand(
 
 
 export function createConsoleWebSocket() {
+  const url = new URL(API_BASE_URL)
+
+  url.protocol =
+    url.protocol === 'https:'
+      ? 'wss:'
+      : 'ws:'
+  url.pathname = '/api/v1/console/stream'
+
   return new WebSocket(
-    'wss://terraria-api.tyrantblue.xyz/api/server/ws',
+    url.toString(),
   )
 }

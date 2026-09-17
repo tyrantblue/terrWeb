@@ -15,10 +15,10 @@ import {
 
 import {
   banPlayer,
-  getServerStatus,
+  getPlayers,
   kickPlayer,
   sendSay,
-  type ServerStatus,
+  type PlayersResponse,
 } from '../api/server'
 
 import ConfirmDialog from '../components/ConfirmDialog'
@@ -26,7 +26,7 @@ import ConfirmDialog from '../components/ConfirmDialog'
 
 export default function Players() {
   const [status, setStatus] =
-    useState<ServerStatus | null>(null)
+    useState<PlayersResponse | null>(null)
 
   const [loading, setLoading] =
     useState(true)
@@ -52,7 +52,7 @@ export default function Players() {
       setLoading(true)
 
       const data =
-        await getServerStatus()
+        await getPlayers()
 
       setStatus(data)
 
@@ -321,7 +321,7 @@ export default function Players() {
           value={
             status
               ? String(
-                  status.players.online,
+                  status.online,
                 )
               : '—'
           }
@@ -333,7 +333,7 @@ export default function Players() {
           value={
             status
               ? String(
-                  status.max_players,
+                  status.max,
                 )
               : '—'
           }
@@ -343,7 +343,7 @@ export default function Players() {
         <StatCard
           label="Server Status"
           value={
-            status?.running
+            status !== null
               ? 'Online'
               : 'Offline'
           }
@@ -352,13 +352,13 @@ export default function Players() {
               className={[
                 'h-2 w-2',
                 'rounded-full',
-                status?.running
+                status !== null
                   ? 'bg-emerald-400'
                   : 'bg-red-400',
               ].join(' ')}
             />
           }
-          online={status?.running}
+          online={status !== null}
         />
 
       </div>
@@ -421,7 +421,7 @@ export default function Players() {
             ].join(' ')}
           >
             {status
-              ? `${status.players.online} / ${status.max_players}`
+              ? `${status.online} / ${status.max}`
               : '—'}
           </div>
 
@@ -442,23 +442,24 @@ export default function Players() {
             Loading players...
           </div>
 
-        ) : status?.players.list.length ? (
+        ) : status?.players.length ? (
 
           <div className="space-y-2">
 
-            {status.players.list.map(
+            {status.players.map(
               (player) => {
+                const playerName = player.name
                 const kicking =
                   action ===
-                  `kick:${player}`
+                  `kick:${playerName}`
 
                 const banning =
                   action ===
-                  `ban:${player}`
+                  `ban:${playerName}`
 
                 return (
                   <div
-                    key={player}
+                    key={`${playerName}-${player.ip}-${player.port}`}
                     className={[
                       'flex flex-col',
                       'gap-3',
@@ -488,7 +489,7 @@ export default function Players() {
                           'text-emerald-400',
                         ].join(' ')}
                       >
-                        {getInitial(player)}
+                        {getInitial(playerName)}
                       </div>
 
 
@@ -502,7 +503,7 @@ export default function Players() {
                               'text-gray-200',
                             ].join(' ')}
                           >
-                            {player}
+                            {playerName}
                           </span>
 
 
@@ -526,6 +527,10 @@ export default function Players() {
 
                         </div>
 
+                        <div className="mt-0.5 font-mono text-[11px] text-gray-600">
+                          {player.ip}:{player.port}
+                        </div>
+
                       </div>
 
                     </div>
@@ -536,7 +541,7 @@ export default function Players() {
 
                       <button
                         onClick={() =>
-                          handleKickRequest(player)
+                          handleKickRequest(playerName)
                         }
                         disabled={
                           action !== null
@@ -569,7 +574,7 @@ export default function Players() {
 
                       <button
                         onClick={() =>
-                          handleBanRequest(player)
+                          handleBanRequest(playerName)
                         }
                         disabled={
                           action !== null

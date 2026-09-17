@@ -1,4 +1,7 @@
-import { apiFetch } from './client'
+import {
+  API_BASE_URL,
+  apiFetch,
+} from './client'
 
 export interface World {
   name: string
@@ -31,13 +34,80 @@ export function switchWorld(file: string) {
   })
 }
 
-export function uploadWorld(file: File) {
+export interface UploadProgress {
+  loaded: number
+  total: number
+  percent: number
+}
+
+export function uploadWorldWithProgress(
+  file: File,
+  onProgress: (
+    progress: UploadProgress,
+  ) => void,
+) {
   const formData = new FormData()
 
   formData.append('file', file)
 
-  return apiFetch('/api/world/upload', {
-    method: 'POST',
-    body: formData,
+  return new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest()
+
+    request.open(
+      'POST',
+      `${API_BASE_URL}/api/world/upload`,
+    )
+
+    request.upload.onprogress = (event) => {
+      if (!event.lengthComputable) {
+        return
+      }
+
+      const percent = Math.min(
+        100,
+        Math.round(
+          (event.loaded / event.total) * 100,
+        ),
+      )
+
+      onProgress({
+        loaded: event.loaded,
+        total: event.total,
+        percent,
+      })
+    }
+
+    request.onload = () => {
+      if (
+        request.status >= 200 &&
+        request.status < 300
+      ) {
+        try {
+          resolve(
+            request.responseText
+              ? JSON.parse(request.responseText)
+              : null,
+          )
+        } catch {
+          resolve(null)
+        }
+
+        return
+      }
+
+      reject(
+        new Error(
+          `API request failed: ${request.status}`,
+        ),
+      )
+    }
+
+    request.onerror = () => {
+      reject(
+        new Error('Upload request failed'),
+      )
+    }
+
+    request.send(formData)
   })
 }

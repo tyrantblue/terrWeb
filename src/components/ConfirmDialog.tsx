@@ -48,9 +48,7 @@ export default function ConfirmDialog({
         {/* Overlay */}
         <AlertDialog.Overlay
           className={[
-            'fixed inset-0 z-50',
-            'bg-black/60',
-            'backdrop-blur-[2px]',
+            'ui-dialog-overlay',
             'data-[state=open]:animate-in',
             'data-[state=closed]:animate-out',
             'data-[state=closed]:fade-out-0',
@@ -62,22 +60,7 @@ export default function ConfirmDialog({
         {/* Dialog */}
         <AlertDialog.Content
           className={[
-            'fixed left-1/2 top-1/2',
-            'z-50',
-            'w-[calc(100%-2rem)]',
-            'max-w-md',
-            '-translate-x-1/2',
-            '-translate-y-1/2',
-
-            'rounded-xl',
-            'border border-white/[0.09]',
-            'bg-[#17191c]',
-            'p-5',
-
-            'shadow-2xl',
-            'shadow-black/40',
-
-            'outline-none',
+            'ui-dialog',
 
             'data-[state=open]:animate-in',
             'data-[state=closed]:animate-out',
@@ -143,17 +126,8 @@ export default function ConfirmDialog({
             <AlertDialog.Cancel
               disabled={loading}
               className={[
-                'rounded-lg',
-                'border border-white/[0.07]',
-                'bg-white/[0.025]',
-                'px-3.5 py-2',
-                'text-sm font-medium',
-                'text-gray-400',
-                'transition',
-                'hover:bg-white/[0.05]',
-                'hover:text-gray-200',
-                'disabled:cursor-not-allowed',
-                'disabled:opacity-40',
+                'ui-button',
+                'ui-button-secondary',
                 'outline-none',
               ].join(' ')}
             >
@@ -165,19 +139,8 @@ export default function ConfirmDialog({
               onClick={handleConfirm}
               disabled={loading}
               className={[
-                'inline-flex',
-                'items-center',
-                'justify-center',
-                'gap-2',
-                'rounded-lg',
-                'bg-emerald-500',
-                'px-3.5 py-2',
-                'text-sm font-medium',
-                'text-[#07130e]',
-                'transition',
-                'hover:bg-emerald-400',
-                'disabled:cursor-not-allowed',
-                'disabled:opacity-50',
+                'ui-button',
+                'ui-button-primary',
                 'outline-none',
               ].join(' ')}
             >

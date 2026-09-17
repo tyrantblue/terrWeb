@@ -202,11 +202,8 @@ export default function Console() {
 
             <div
               className={[
-                'flex h-10 w-10',
-                'items-center justify-center',
-                'rounded-lg',
-                'bg-emerald-500/10',
-                'text-emerald-400',
+                'ui-icon-tile',
+                'h-10 w-10',
               ].join(' ')}
             >
               <Terminal size={20} />
@@ -214,11 +211,11 @@ export default function Console() {
 
             <div>
 
-              <h2 className="text-2xl font-semibold tracking-tight">
+              <h2 className="ui-page-title">
                 Console
               </h2>
 
-              <p className="mt-1 text-sm text-gray-600">
+              <p className="ui-page-description">
                 Terraria server console
               </p>
 

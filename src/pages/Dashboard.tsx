@@ -135,9 +135,7 @@ export default function Dashboard() {
       <section
         className={[
           'relative overflow-hidden',
-          'rounded-xl',
-          'border border-white/[0.08]',
-          'bg-[#17191c]',
+          'ui-panel',
           'p-6',
         ].join(' ')}
       >
@@ -169,12 +167,9 @@ export default function Dashboard() {
             <div className="flex items-center gap-3">
 
               <div
-                className={[
-                  'flex h-11 w-11',
-                  'items-center justify-center',
-                  'rounded-xl',
-                  'bg-emerald-500/10',
-                  'text-emerald-400',
+              className={[
+                  'ui-icon-tile',
+                  'h-11 w-11',
                 ].join(' ')}
               >
                 <Server
@@ -187,15 +182,13 @@ export default function Dashboard() {
 
                 <h2
                   className={[
-                    'text-2xl font-semibold',
-                    'tracking-tight',
-                    'text-gray-100',
+                    'ui-page-title',
                   ].join(' ')}
                 >
                   Dashboard
                 </h2>
 
-                <p className="mt-1 text-sm text-gray-600">
+                <p className="ui-page-description">
                   Terraria server overview
                 </p>
 

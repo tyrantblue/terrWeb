@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "./styles/ui.css";
 
 :root {
   font-family:
@@ -29,6 +30,26 @@
   --text-faint: #4b5563;
 
   --accent: #34d399;
+
+  --ui-panel-bg: #17191c;
+  --ui-surface: rgb(255 255 255 / 2.5%);
+  --ui-surface-hover: rgb(255 255 255 / 5%);
+  --ui-border: rgb(255 255 255 / 7%);
+  --ui-border-soft: rgb(255 255 255 / 5%);
+  --ui-border-strong: rgb(255 255 255 / 10%);
+  --ui-text-primary: #f3f4f6;
+  --ui-text-secondary: #9ca3af;
+  --ui-text-muted: #6b7280;
+  --ui-text-faint: #4b5563;
+  --ui-accent: #34d399;
+  --ui-accent-hover: #6ee7b7;
+  --ui-accent-surface: rgb(52 211 153 / 6%);
+  --ui-accent-surface-hover: rgb(52 211 153 / 10%);
+  --ui-accent-border: rgb(52 211 153 / 10%);
+  --ui-accent-border-strong: rgb(52 211 153 / 20%);
+  --ui-accent-contrast: #07130e;
+  --ui-radius-control: 0.5rem;
+  --ui-radius-panel: 0.75rem;
 }
 
 * {

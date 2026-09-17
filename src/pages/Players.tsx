@@ -242,11 +242,8 @@ export default function Players() {
 
             <div
               className={[
-                'flex h-10 w-10',
-                'items-center justify-center',
-                'rounded-lg',
-                'bg-emerald-500/10',
-                'text-emerald-400',
+                'ui-icon-tile',
+                'h-10 w-10',
               ].join(' ')}
             >
               <Users size={20} />
@@ -256,15 +253,14 @@ export default function Players() {
             <div>
 
               <h2
-                className={[
-                  'text-2xl font-semibold',
-                  'tracking-tight',
+                  className={[
+                  'ui-page-title',
                 ].join(' ')}
               >
                 Players
               </h2>
 
-              <p className="mt-1 text-sm text-gray-600">
+              <p className="ui-page-description">
                 Manage connected players
               </p>
 
@@ -282,17 +278,8 @@ export default function Players() {
             action !== null
           }
           className={[
-            'flex items-center gap-2',
-            'rounded-lg',
-            'border border-white/[0.07]',
-            'bg-white/[0.025]',
-            'px-3.5 py-2',
-            'text-sm text-gray-400',
-            'transition',
-            'hover:bg-white/[0.05]',
-            'hover:text-gray-200',
-            'disabled:cursor-not-allowed',
-            'disabled:opacity-40',
+            'ui-button',
+            'ui-button-secondary',
           ].join(' ')}
         >
 
@@ -316,10 +303,7 @@ export default function Players() {
       {message && (
         <div
           className={[
-            'flex items-center',
-            'rounded-lg',
-            'border border-white/[0.07]',
-            'bg-white/[0.025]',
+            'ui-panel-subtle',
             'px-4 py-3',
             'text-sm text-gray-500',
           ].join(' ')}

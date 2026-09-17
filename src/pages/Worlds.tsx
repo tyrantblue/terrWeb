@@ -5,23 +5,56 @@ import {
   type ChangeEvent,
 } from 'react'
 
+import * as AlertDialog from '@radix-ui/react-alert-dialog'
+
 import {
+  Activity,
   ArrowRightLeft,
   Check,
   FileArchive,
   Globe,
   RefreshCw,
   Upload,
+  X,
 } from 'lucide-react'
 
 import {
   getWorlds,
   switchWorld,
-  uploadWorld,
+  uploadWorldWithProgress,
   type World,
 } from '../api/world'
 
 import ConfirmDialog from '../components/ConfirmDialog'
+
+type UploadStatus =
+  | 'idle'
+  | 'uploading'
+  | 'processing'
+  | 'success'
+  | 'error'
+
+interface UploadState {
+  status: UploadStatus
+  fileName: string
+  fileSize: number
+  loaded: number
+  total: number
+  percent: number
+  startedAt: number | null
+  finishedAt: number | null
+}
+
+const initialUploadState: UploadState = {
+  status: 'idle',
+  fileName: '',
+  fileSize: 0,
+  loaded: 0,
+  total: 0,
+  percent: 0,
+  startedAt: null,
+  finishedAt: null,
+}
 
 
 export default function Worlds() {
@@ -33,6 +66,14 @@ export default function Worlds() {
 
   const [uploading, setUploading] =
     useState(false)
+
+  const [uploadDialogOpen, setUploadDialogOpen] =
+    useState(false)
+
+  const [uploadState, setUploadState] =
+    useState<UploadState>(
+      initialUploadState,
+    )
 
   const [switching, setSwitching] =
     useState<string | null>(null)
@@ -93,12 +134,53 @@ export default function Worlds() {
 
     try {
       setUploading(true)
+      setUploadDialogOpen(true)
+
+      setUploadState({
+        status: 'uploading',
+        fileName: file.name,
+        fileSize: file.size,
+        loaded: 0,
+        total: file.size,
+        percent: 0,
+        startedAt: Date.now(),
+        finishedAt: null,
+      })
 
       setMessage(
         'Uploading world...',
       )
 
-      await uploadWorld(file)
+      await uploadWorldWithProgress(
+        file,
+        (progress) => {
+          setUploadState(
+            (current) => ({
+              ...current,
+              status:
+                progress.percent >= 100
+                  ? 'processing'
+                  : 'uploading',
+              loaded: progress.loaded,
+              total: progress.total,
+              percent: progress.percent,
+            }),
+          )
+        },
+      )
+
+      setUploadState(
+        (current) => ({
+          ...current,
+          status: 'success',
+          loaded:
+            current.total || file.size,
+          total:
+            current.total || file.size,
+          percent: 100,
+          finishedAt: Date.now(),
+        }),
+      )
 
       setMessage(
         `Uploaded ${file.name}`,
@@ -108,6 +190,14 @@ export default function Worlds() {
 
     } catch (error) {
       console.error(error)
+
+      setUploadState(
+        (current) => ({
+          ...current,
+          status: 'error',
+          finishedAt: Date.now(),
+        }),
+      )
 
       setMessage(
         'Failed to upload world',
@@ -257,16 +347,8 @@ export default function Worlds() {
           {/* Upload */}
           <label
             className={[
-              'flex items-center gap-2',
-              'rounded-lg',
-              'border border-emerald-500/10',
-              'bg-emerald-500/[0.06]',
-              'px-3.5 py-2',
-              'text-sm font-medium',
-              'text-emerald-400',
-              'transition',
-              'hover:border-emerald-500/20',
-              'hover:bg-emerald-500/10',
+              'ui-button',
+              'ui-button-accent',
 
               uploading
                 ? [
@@ -293,6 +375,29 @@ export default function Worlds() {
 
           </label>
 
+          {/* Upload progress */}
+          <button
+            onClick={() =>
+              setUploadDialogOpen(true)
+            }
+            disabled={
+              uploadState.status === 'idle'
+            }
+            title="View upload progress"
+            className={[
+              'ui-icon-button',
+            ].join(' ')}
+          >
+            <Activity
+              size={16}
+              className={
+                uploading
+                  ? 'animate-pulse text-emerald-400'
+                  : ''
+              }
+            />
+          </button>
+
 
           {/* Refresh */}
           <button
@@ -303,17 +408,8 @@ export default function Worlds() {
               switching !== null
             }
             className={[
-              'flex items-center gap-2',
-              'rounded-lg',
-              'border border-white/[0.07]',
-              'bg-white/[0.025]',
-              'px-3.5 py-2',
-              'text-sm text-gray-400',
-              'transition',
-              'hover:bg-white/[0.05]',
-              'hover:text-gray-200',
-              'disabled:cursor-not-allowed',
-              'disabled:opacity-40',
+              'ui-button',
+              'ui-button-secondary',
             ].join(' ')}
           >
 
@@ -527,7 +623,257 @@ export default function Worlds() {
         loading={switching !== null}
       />
 
+
+      {/* Upload progress dialog */}
+      <UploadProgressDialog
+        open={uploadDialogOpen}
+        onOpenChange={setUploadDialogOpen}
+        upload={uploadState}
+      />
+
     </div>
+  )
+}
+
+
+/* ------------------------------ */
+/* Upload Progress Dialog          */
+/* ------------------------------ */
+
+function UploadProgressDialog({
+  open,
+  onOpenChange,
+  upload,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  upload: UploadState
+}) {
+  const statusText =
+    getUploadStatusText(upload.status)
+
+  const detailText =
+    upload.status === 'idle'
+      ? 'No upload has started yet.'
+      : upload.status === 'processing'
+        ? 'Upload received. Waiting for the server to finish saving the world.'
+        : upload.status === 'success'
+          ? 'Upload completed successfully.'
+          : upload.status === 'error'
+            ? 'Upload failed. Try uploading the world again.'
+            : 'Uploading world file to the server.'
+
+  return (
+    <AlertDialog.Root
+      open={open}
+      onOpenChange={onOpenChange}
+    >
+      <AlertDialog.Portal>
+        <AlertDialog.Overlay
+          className={[
+            'ui-dialog-overlay',
+            'data-[state=open]:animate-in',
+            'data-[state=closed]:animate-out',
+            'data-[state=closed]:fade-out-0',
+            'data-[state=open]:fade-in-0',
+          ].join(' ')}
+        />
+
+        <AlertDialog.Content
+          className={[
+            'fixed left-1/2 top-1/2',
+            'z-50',
+            'w-[calc(100%-2rem)]',
+            'max-w-md',
+            '-translate-x-1/2',
+            '-translate-y-1/2',
+          'ui-dialog',
+            'data-[state=open]:animate-in',
+            'data-[state=closed]:animate-out',
+            'data-[state=closed]:fade-out-0',
+            'data-[state=open]:fade-in-0',
+            'data-[state=closed]:zoom-out-95',
+            'data-[state=open]:zoom-in-95',
+          ].join(' ')}
+        >
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex min-w-0 items-start gap-3">
+              <div
+                className={[
+                  'flex h-10 w-10',
+                  'shrink-0',
+                  'items-center justify-center',
+                  'rounded-lg',
+                  upload.status === 'error'
+                    ? 'bg-red-500/10 text-red-400'
+                    : 'bg-emerald-500/10 text-emerald-400',
+                ].join(' ')}
+              >
+                <Activity
+                  size={19}
+                  className={
+                    upload.status === 'uploading' ||
+                    upload.status === 'processing'
+                      ? 'animate-pulse'
+                      : ''
+                  }
+                />
+              </div>
+
+              <div className="min-w-0">
+                <AlertDialog.Title
+                  className={[
+                    'text-base font-semibold',
+                    'text-gray-100',
+                  ].join(' ')}
+                >
+                  Upload Progress
+                </AlertDialog.Title>
+
+                <AlertDialog.Description
+                  className={[
+                    'mt-1.5',
+                    'text-sm leading-6',
+                    'text-gray-500',
+                  ].join(' ')}
+                >
+                  {detailText}
+                </AlertDialog.Description>
+              </div>
+            </div>
+
+            <AlertDialog.Cancel
+              className={[
+                'flex h-8 w-8',
+                'shrink-0',
+                'items-center justify-center',
+                'rounded-lg',
+                'text-gray-500',
+                'transition',
+                'hover:bg-white/[0.05]',
+                'hover:text-gray-200',
+                'outline-none',
+              ].join(' ')}
+            >
+              <X size={16} />
+            </AlertDialog.Cancel>
+          </div>
+
+          <div
+            className={[
+              'mt-5',
+              'rounded-lg',
+              'border border-white/[0.07]',
+              'bg-white/[0.02]',
+              'p-4',
+            ].join(' ')}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="truncate text-sm font-medium text-gray-300">
+                  {upload.fileName || 'No file selected'}
+                </div>
+
+                <div className="mt-1 text-xs text-gray-600">
+                  {upload.fileSize
+                    ? formatSize(upload.fileSize)
+                    : 'Waiting for upload'}
+                </div>
+              </div>
+
+              <div
+                className={[
+                  'shrink-0',
+                  'rounded-md',
+                  'bg-white/[0.035]',
+                  'px-2 py-1',
+                  'text-xs font-medium',
+                  upload.status === 'error'
+                    ? 'text-red-400'
+                    : upload.status === 'success'
+                      ? 'text-emerald-400'
+                      : 'text-gray-400',
+                ].join(' ')}
+              >
+                {statusText}
+              </div>
+            </div>
+
+            <div className="mt-4">
+              <div className="mb-2 flex items-center justify-between text-xs">
+                <span className="text-gray-600">
+                  {formatSize(upload.loaded)}
+                  {' / '}
+                  {formatSize(upload.total)}
+                </span>
+
+                <span className="font-medium text-gray-300">
+                  {upload.percent}%
+                </span>
+              </div>
+
+              <div
+                className={[
+                  'h-2 overflow-hidden',
+                  'rounded-full',
+                  'bg-white/[0.06]',
+                ].join(' ')}
+              >
+                <div
+                  className={[
+                    'h-full rounded-full',
+                    'transition-all duration-300',
+                    upload.status === 'error'
+                      ? 'bg-red-400'
+                      : 'bg-emerald-400',
+                  ].join(' ')}
+                  style={{
+                    width: `${upload.percent}%`,
+                  }}
+                />
+              </div>
+            </div>
+
+            {(upload.startedAt ||
+              upload.finishedAt) && (
+              <div
+                className={[
+                  'mt-4 grid grid-cols-2',
+                  'divide-x divide-white/[0.05]',
+                  'rounded-lg',
+                  'border border-white/[0.05]',
+                  'bg-white/[0.015]',
+                ].join(' ')}
+              >
+                <div className="px-3 py-2.5">
+                  <div className="text-[11px] uppercase tracking-wide text-gray-700">
+                    Started
+                  </div>
+
+                  <div className="mt-1 truncate text-xs text-gray-500">
+                    {upload.startedAt
+                      ? formatTime(upload.startedAt)
+                      : '-'}
+                  </div>
+                </div>
+
+                <div className="px-3 py-2.5">
+                  <div className="text-[11px] uppercase tracking-wide text-gray-700">
+                    Finished
+                  </div>
+
+                  <div className="mt-1 truncate text-xs text-gray-500">
+                    {upload.finishedAt
+                      ? formatTime(upload.finishedAt)
+                      : '-'}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </AlertDialog.Content>
+      </AlertDialog.Portal>
+    </AlertDialog.Root>
   )
 }
 
@@ -553,11 +899,9 @@ function WorldCard({
   return (
     <div
       className={[
-        'rounded-xl',
-        'border',
-        'bg-[#17191c]',
+        'ui-panel',
+        'ui-panel-hover',
         'p-5',
-        'transition-all duration-150',
 
         isActive
           ? [
@@ -745,12 +1089,8 @@ function WorldCard({
           switching !== null
         }
         className={[
-          'mt-4 flex w-full',
-          'items-center justify-center',
-          'gap-2 rounded-lg',
-          'px-4 py-2.5',
-          'text-sm font-medium',
-          'transition-all duration-150',
+          'ui-button',
+          'mt-4 w-full',
 
           isActive
             ? [
@@ -759,11 +1099,7 @@ function WorldCard({
                 'text-gray-600',
               ].join(' ')
             : [
-                'border border-emerald-500/10',
-                'bg-emerald-500/[0.05]',
-                'text-emerald-400',
-                'hover:border-emerald-500/20',
-                'hover:bg-emerald-500/10',
+                'ui-button-accent',
               ].join(' '),
 
           switching !== null &&
@@ -816,9 +1152,31 @@ function WorldCard({
 /* File size                       */
 /* ------------------------------ */
 
+function getUploadStatusText(
+  status: UploadStatus,
+) {
+  switch (status) {
+    case 'uploading':
+      return 'Uploading'
+    case 'processing':
+      return 'Processing'
+    case 'success':
+      return 'Complete'
+    case 'error':
+      return 'Failed'
+    default:
+      return 'Idle'
+  }
+}
+
+
 function formatSize(
   bytes: number,
 ) {
+  if (bytes <= 0) {
+    return '0 KB'
+  }
+
   if (bytes < 1024 * 1024) {
     return `${(
       bytes / 1024
@@ -841,4 +1199,11 @@ function formatDate(
   value: number,
 ) {
   return new Date(value * 1000).toLocaleString()
+}
+
+
+function formatTime(
+  value: number,
+) {
+  return new Date(value).toLocaleTimeString()
 }

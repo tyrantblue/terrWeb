@@ -150,8 +150,8 @@ export default function MainLayout() {
 
           <div
             className={[
-              'rounded-lg',
-              'border border-emerald-500/10',
+              'ui-panel-subtle',
+              'border-emerald-500/10',
               'bg-emerald-500/[0.04]',
               'px-3 py-2.5',
             ].join(' ')}
@@ -287,7 +287,7 @@ function NavItem({
           'group relative',
           'flex w-full',
           'items-center gap-3',
-          'rounded-lg',
+          'rounded-[var(--ui-radius-control)]',
           'px-3 py-2.5',
           'text-sm',
           'transition-all duration-150',

@@ -1,4 +1,4 @@
-const API_BASE_URL = 'https://terraria-api.tyrantblue.xyz'
+export const API_BASE_URL = 'https://terraria-api.tyrantblue.xyz'
 
 export async function apiFetch<T>(
   path: string,

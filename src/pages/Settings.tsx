@@ -218,11 +218,8 @@ export default function Settings() {
 
             <div
               className={[
-                'flex h-10 w-10',
-                'items-center justify-center',
-                'rounded-lg',
-                'bg-emerald-500/10',
-                'text-emerald-400',
+                'ui-icon-tile',
+                'h-10 w-10',
               ].join(' ')}
             >
               <Server size={20} />
@@ -230,11 +227,11 @@ export default function Settings() {
 
             <div>
 
-              <h2 className="text-2xl font-semibold">
+              <h2 className="ui-page-title">
                 Settings
               </h2>
 
-              <p className="mt-1 text-sm text-gray-500">
+              <p className="ui-page-description">
                 Configure your Terraria server
               </p>
 
@@ -251,15 +248,8 @@ export default function Settings() {
             saving !== null
           }
           className={[
-            'flex items-center gap-2',
-            'rounded-lg border',
-            'border-white/10',
-            'bg-white/5',
-            'px-4 py-2',
-            'text-sm text-gray-300',
-            'transition',
-            'hover:bg-white/10',
-            'disabled:opacity-50',
+            'ui-button',
+            'ui-button-secondary',
           ].join(' ')}
         >
           <RefreshCw
@@ -281,9 +271,7 @@ export default function Settings() {
       {message && (
         <div
           className={[
-            'rounded-lg border',
-            'border-white/10',
-            'bg-white/5',
+            'ui-panel-subtle',
             'px-4 py-3',
             'text-sm text-gray-400',
           ].join(' ')}
@@ -296,9 +284,7 @@ export default function Settings() {
       {/* Server information */}
       <section
         className={[
-          'rounded-xl border',
-          'border-white/10',
-          'bg-[#17191c]',
+          'ui-panel',
           'p-5',
         ].join(' ')}
       >

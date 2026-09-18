@@ -32,6 +32,8 @@ import {
 
 import ConfirmDialog from '../components/ConfirmDialog'
 import { CAPABILITIES, useApiMeta } from '../context/apiMeta'
+import { useOperations } from '../context/operations'
+import { useAbortOnUnmount } from '../hooks/useAbortOnUnmount'
 import {
   describeUploadError,
   formatErrorReport,
@@ -76,6 +78,10 @@ export default function Worlds() {
   const canUpload = hasCapability(
     CAPABILITIES.worldUpload,
   )
+
+  const { activeExclusive } = useOperations()
+
+  const operationAbort = useAbortOnUnmount()
 
   const [loading, setLoading] =
     useState(true)
@@ -247,7 +253,8 @@ export default function Worlds() {
   ) {
     if (
       switching !== null ||
-      world.active
+      world.active ||
+      activeExclusive !== null
     ) {
       return
     }
@@ -275,6 +282,7 @@ export default function Worlds() {
       await runOperation(
         () => switchWorld(file),
         {
+          signal: operationAbort.current?.signal,
           onProgress: (current) => {
             setSwitchProgress(current.progress)
 
@@ -324,6 +332,7 @@ export default function Worlds() {
       await runOperation(
         () => backupWorld(world.file),
         {
+          signal: operationAbort.current?.signal,
           onProgress: (current) => {
             setMessage(
               current.message ??
@@ -650,6 +659,7 @@ export default function Worlds() {
                 switching={switching}
                 switchProgress={switchProgress}
                 action={worldAction}
+                switchingBlocked={activeExclusive !== null}
                 onSwitch={handleSwitchRequest}
                 onBackup={handleBackup}
                 onDelete={setDeleteTarget}
@@ -698,6 +708,7 @@ export default function Worlds() {
                       switching={switching}
                       switchProgress={switchProgress}
                       action={worldAction}
+                      switchingBlocked={activeExclusive !== null}
                       onSwitch={handleSwitchRequest}
                       onBackup={handleBackup}
                       onDelete={setDeleteTarget}
@@ -1015,6 +1026,7 @@ function WorldCard({
   switching,
   switchProgress,
   action,
+  switchingBlocked,
   onSwitch,
   onBackup,
   onDelete,
@@ -1023,6 +1035,8 @@ function WorldCard({
   switching: string | null
   switchProgress: number
   action: string | null
+  /** An exclusive operation is in flight, so activating would 409. */
+  switchingBlocked: boolean
   onSwitch: (
     world: World,
   ) => void
@@ -1222,7 +1236,8 @@ function WorldCard({
         }
         disabled={
           isActive ||
-          switching !== null
+          switching !== null ||
+          switchingBlocked
         }
         className={[
           'ui-button',

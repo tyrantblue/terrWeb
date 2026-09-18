@@ -84,7 +84,7 @@ function isMissingOperation(error: ApiError) {
 export class OperationLostError extends Error {
   constructor(id: string) {
     super(
-      `Operation ${id} is no longer tracked because the API restarted. Its outcome is unknown — check the current server state before retrying.`,
+      `Operation ${id} has ended, but its result is unknown because the API restarted. Refresh to confirm the current server state before retrying.`,
     )
 
     this.name = 'OperationLostError'
@@ -127,18 +127,40 @@ export function getOperations() {
 
 // A restore restarts the server twice, so the wait budget has to be more
 // generous than a single restart's 60s backend timeout.
-const POLL_INTERVAL_MS = 1000
-const MAX_POLL_ATTEMPTS = 300
+const FAST_POLL_INTERVAL_MS = 500
+const SLOW_POLL_INTERVAL_MS = 1200
+const FAST_POLL_WINDOW_MS = 5000
+const MAX_POLL_ATTEMPTS = 400
+
+/** Raised when the caller aborts the wait (e.g. the page unmounted). */
+export class OperationCancelledError extends Error {
+  constructor() {
+    super('Operation wait was cancelled.')
+    this.name = 'OperationCancelledError'
+  }
+}
+
+export interface WaitForOperationOptions {
+  onProgress?: (operation: Operation) => void
+  /** Abort the polling loop, for example when the component unmounts. */
+  signal?: AbortSignal
+}
 
 export async function waitForOperation(
   id: string,
-  onProgress?: (operation: Operation) => void,
+  options: WaitForOperationOptions = {},
 ) {
+  const startedAt = Date.now()
+
   for (
     let attempt = 0;
     attempt < MAX_POLL_ATTEMPTS;
     attempt += 1
   ) {
+    if (options.signal?.aborted) {
+      throw new OperationCancelledError()
+    }
+
     let operation: Operation
 
     try {
@@ -154,7 +176,7 @@ export async function waitForOperation(
       throw error
     }
 
-    onProgress?.(operation)
+    options.onProgress?.(operation)
 
     if (operation.state === 'succeeded') {
       return operation
@@ -168,13 +190,32 @@ export async function waitForOperation(
       )
     }
 
-    await new Promise((resolve) => {
-      window.setTimeout(resolve, POLL_INTERVAL_MS)
+    // Poll fast while the operation is warming up, then back off so a long
+    // restore does not hammer the API.
+    const elapsed = Date.now() - startedAt
+    const interval = elapsed < FAST_POLL_WINDOW_MS
+      ? FAST_POLL_INTERVAL_MS
+      : SLOW_POLL_INTERVAL_MS
+
+    await new Promise<void>((resolve, reject) => {
+      const timer = window.setTimeout(() => {
+        options.signal?.removeEventListener('abort', handleAbort)
+        resolve()
+      }, interval)
+
+      function handleAbort() {
+        window.clearTimeout(timer)
+        reject(new OperationCancelledError())
+      }
+
+      options.signal?.addEventListener('abort', handleAbort, {
+        once: true,
+      })
     })
   }
 
   throw new Error(
-    `Operation ${id} did not finish within ${Math.round((POLL_INTERVAL_MS * MAX_POLL_ATTEMPTS) / 1000)}s. It may still be running — refresh to check.`,
+    `Operation ${id} did not finish within ${Math.round((MAX_POLL_ATTEMPTS * SLOW_POLL_INTERVAL_MS) / 1000)}s. It may still be running — refresh to check.`,
   )
 }
 
@@ -239,6 +280,8 @@ export interface RunOperationOptions {
    */
   adoptKind?: string
   onAdopt?: (conflict: OperationConflict) => void
+  /** Abort the wait when the component that started it unmounts. */
+  signal?: AbortSignal
 }
 
 /**
@@ -274,16 +317,10 @@ export async function runOperation(
 
     options.onAdopt?.(conflict)
 
-    return waitForOperation(
-      conflict.operationId,
-      options.onProgress,
-    )
+    return waitForOperation(conflict.operationId, options)
   }
 
-  return waitForOperation(
-    started.operation_id,
-    options.onProgress,
-  )
+  return waitForOperation(started.operation_id, options)
 }
 
 export interface UploadProgress {

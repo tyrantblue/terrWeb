@@ -35,6 +35,12 @@ export interface ServerStatus {
   players: ServerPlayers
   world: ServerWorld | null
   config: Record<string, string>
+  /** API 2.0.0+: `config.password` is a mask; this says if one is set. */
+  password_set?: boolean
+  /** API 2.0.0+: true when the server log pipeline has stopped. */
+  log_stalled?: boolean
+  /** API 2.0.0+: seconds since the log last advanced. */
+  log_age?: number | null
 }
 
 

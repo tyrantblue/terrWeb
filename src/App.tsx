@@ -7,6 +7,7 @@ import {
 import MainLayout from './layouts/MainLayout'
 import ApiMetaProvider from './context/ApiMetaProvider'
 import ConsoleHeartbeatProvider from './context/ConsoleHeartbeatProvider'
+import OperationsProvider from './context/OperationsProvider'
 import ServerStatusProvider from './context/ServerStatusProvider'
 
 import Dashboard from './pages/Dashboard'
@@ -25,47 +26,51 @@ function App() {
 
         <ConsoleHeartbeatProvider>
 
-          <ServerStatusProvider>
+          <OperationsProvider>
 
-        <Routes>
+            <ServerStatusProvider>
 
-          <Route element={<MainLayout />}>
+              <Routes>
 
-            <Route
-              path="/"
-              element={<Dashboard />}
-            />
+                <Route element={<MainLayout />}>
 
-            <Route
-              path="/worlds"
-              element={<Worlds />}
-            />
+                  <Route
+                    path="/"
+                    element={<Dashboard />}
+                  />
 
-            <Route
-              path="/players"
-              element={<Players />}
-            />
+                  <Route
+                    path="/worlds"
+                    element={<Worlds />}
+                  />
 
-            <Route
-              path="/console"
-              element={<Console />}
-            />
+                  <Route
+                    path="/players"
+                    element={<Players />}
+                  />
 
-            <Route
-              path="/operations"
-              element={<Operations />}
-            />
+                  <Route
+                    path="/console"
+                    element={<Console />}
+                  />
 
-            <Route
-              path="/settings"
-              element={<Settings />}
-            />
+                  <Route
+                    path="/operations"
+                    element={<Operations />}
+                  />
 
-          </Route>
+                  <Route
+                    path="/settings"
+                    element={<Settings />}
+                  />
 
-        </Routes>
+                </Route>
 
-        </ServerStatusProvider>
+              </Routes>
+
+            </ServerStatusProvider>
+
+          </OperationsProvider>
 
         </ConsoleHeartbeatProvider>
 

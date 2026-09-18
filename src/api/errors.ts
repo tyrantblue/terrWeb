@@ -76,6 +76,19 @@ interface ErrorInfo {
 
 function describeError(error: unknown): ErrorInfo {
   if (error instanceof ApiError) {
+    // The backend rejects a replayed mask with this sentinel; a generic
+    // "bad request" would not tell the user what to do about it.
+    if (
+      error.status === 400 &&
+      error.details?.key === 'password'
+    ) {
+      return {
+        summary:
+          'The masked password cannot be sent back as a new password.',
+        hint: 'Leave the field empty to keep the current password, or type a new one.',
+      }
+    }
+
     const byCode = error.code
       ? ERROR_COPY[error.code]
       : undefined

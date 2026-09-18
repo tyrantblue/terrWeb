@@ -2,6 +2,11 @@ import { apiFetch } from './client'
 
 export interface ConfigResponse {
   values: Record<string, string>
+  /**
+   * Since API 2.0.0 `values.password` is a mask, so this flag — not the
+   * value — tells you whether a password is configured.
+   */
+  password_set?: boolean
   editable_keys: string[]
   runtime_keys: string[]
   restart_keys: string[]
@@ -22,6 +27,33 @@ export function getConfig() {
   )
 }
 
+/**
+ * API 2.0.0+ masks `password` in GET responses, and submitting the mask
+ * back is a 400 by design (`error.details.key === "password"`). Strip it
+ * from every outgoing payload so a future generic form cannot replay it.
+ * An explicit `""` still passes through — that is the documented way to
+ * clear the password.
+ */
+export function isPasswordMask(value: string) {
+  return /^\u2022+$/.test(value.trim())
+}
+
+export function buildConfigPayload(
+  values: Record<string, string | number>,
+) {
+  const payload: Record<string, string | number> = {}
+
+  for (const [key, value] of Object.entries(values)) {
+    if (typeof value === 'string' && isPasswordMask(value)) {
+      continue
+    }
+
+    payload[key] = value
+  }
+
+  return payload
+}
+
 export function updateConfig(
   values: Record<string, string | number>,
   confirmLowMaxPlayers = false,
@@ -34,7 +66,7 @@ export function updateConfig(
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        values,
+        values: buildConfigPayload(values),
         apply: true,
         ...(confirmLowMaxPlayers
           ? { confirm_low_max_players: true }

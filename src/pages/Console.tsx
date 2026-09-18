@@ -27,9 +27,12 @@ import { CAPABILITIES, useApiMeta } from '../context/apiMeta'
 
 /**
  * A console line tagged with a stable identity. Server offsets are the
- * natural key, but the socket replays history with `offset: -1`, so
- * replayed lines need a locally generated key instead — deduping those
- * by offset would collapse the whole replay into a single entry.
+ * natural key.
+ *
+ * API 2.0.0 fixed the replay so it carries real offsets (terraria-server
+ * issue #7), so the `replay:` fallback below is now a compatibility path
+ * for 1.x backends, which replayed history with `offset: -1` and would
+ * otherwise collapse the whole replay into one entry.
  */
 type ConsoleEntry = ConsoleLine & { key: string }
 
@@ -338,9 +341,9 @@ export default function Console() {
           offset < 0 &&
           cursorRef.current !== undefined
         ) {
-          // Socket replay of history the REST catch-up already loaded
+          // 1.x only: replay of history the REST catch-up already loaded
           // with real offsets. Keeping it would add a phantom entry
-          // pinned to the top of the terminal.
+          // pinned to the top of the terminal. Unreachable on 2.x.
           return
         }
 

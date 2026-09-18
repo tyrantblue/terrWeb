@@ -12,6 +12,10 @@
 - 一键重启服务器（二次确认，保存世界后重启）
 - 持久化服务器配置与低玩家上限二次确认
 - 备份恢复、定时任务、连接守卫和事件通知
+- 控制台心跳（后端 1.4.2+）：日志管道停更时在 Dashboard 与 Scheduler 上红色告警，
+  Dashboard 同时读取 `GET /api/v1/server` 的 `log_stalled` / `log_age`；
+  对应 webhook 事件在 2.0.0 起改名为 `log_stalled`（旧名 `console_stalled` 仍兼容），
+  在 Notifications 页按 error 级展示
 - API 版本握手与兼容性提示
 
 ## 技术栈

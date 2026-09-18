@@ -43,13 +43,14 @@ import {
 import { ApiError } from '../api/client'
 import { formatErrorReport } from '../api/errors'
 import {
-  getOperations,
   runOperation,
   waitForOperation,
   type Operation,
 } from '../api/world'
 import ConfirmDialog from '../components/ConfirmDialog'
 import { useConsoleHeartbeat } from '../context/consoleHeartbeat'
+import { useOperations } from '../context/operations'
+import { useAbortOnUnmount } from '../hooks/useAbortOnUnmount'
 
 type OperationsTab =
   | 'backups'
@@ -74,12 +75,22 @@ export default function Operations() {
   const [activeTab, setActiveTab] = useState<OperationsTab>('backups')
   const heartbeat = useConsoleHeartbeat()
 
+  // Aborts any in-flight operation wait when this page unmounts.
+  const operationsAbort = useAbortOnUnmount()
+
+  // Lives in a provider that polls every few seconds, so an operation
+  // started before a page reload is still visible with live progress.
+  const {
+    operations,
+    loading: operationsLoading,
+    error: operationsError,
+    refresh: refreshOperations,
+  } = useOperations()
+
   const [backups, setBackups] = useState<BackupsResponse | null>(null)
   const [scheduler, setScheduler] = useState<SchedulerResponse | null>(null)
   const [guard, setGuard] = useState<GuardResponse | null>(null)
   const [notifications, setNotifications] = useState<NotificationsResponse | null>(null)
-  const [operations, setOperations] = useState<Operation[]>([])
-  const [operationsFailed, setOperationsFailed] = useState(false)
   const [loading, setLoading] = useState(true)
   const [action, setAction] = useState('')
   const [message, setMessage] = useState('')
@@ -100,7 +111,6 @@ export default function Operations() {
         getScheduler(),
         getGuard(),
         getNotifications(),
-        getOperations(),
       ])
 
       if (results[0].status === 'fulfilled') setBackups(results[0].value)
@@ -108,14 +118,6 @@ export default function Operations() {
       if (results[2].status === 'fulfilled') setGuard(results[2].value)
       if (results[3].status === 'fulfilled') setNotifications(results[3].value)
 
-      if (results[4].status === 'fulfilled') {
-        setOperations(results[4].value.operations)
-        setOperationsFailed(false)
-      } else {
-        // Keep the failure visible; otherwise the tab renders the
-        // "no operations" empty state and hides that loading broke.
-        setOperationsFailed(true)
-      }
 
       const failures = results.filter((result) => result.status === 'rejected')
       setMessage(failures.length ? `${failures.length} operations section(s) could not be loaded.` : '')
@@ -177,20 +179,20 @@ export default function Operations() {
       setAction(`schedule:${name}`)
       setMessage(`Running ${name}...`)
       const result = await runSchedule(name)
-      const submitted = result.submitted
+      const submitted = getSubmittedOperationId(result)
 
-      if (typeof submitted === 'string') {
+      if (submitted !== null) {
         // The job already returned its operation id, so there is no start
         // request left to conflict with.
-        await waitForOperation(
-          submitted,
-          (current) => {
+        await waitForOperation(submitted, {
+          onProgress: (current) => {
             setMessage(
               current.message ??
                 `Running ${name}... ${current.progress}%`,
             )
           },
-        )
+          signal: operationsAbort.current?.signal,
+        })
       }
 
       // Report the job's actual outcome. Jobs like `save` skip
@@ -208,7 +210,11 @@ export default function Operations() {
       )
       const detail = job?.last_detail
 
-      if (job?.last_status === 'skipped') {
+      if (submitted !== null) {
+        // The restart-class job was handed off to the operation framework
+        // and we waited for it above, so this is a real completion.
+        setMessage(`${name} finished.`)
+      } else if (job?.last_status === 'skipped') {
         setMessage(`${name} was skipped${detail ? `: ${detail}` : '.'}`)
       } else if (job?.last_status === 'failed') {
         setMessage(`${name} failed${detail ? `: ${detail}` : '.'}`)
@@ -331,7 +337,12 @@ export default function Operations() {
         <SchedulerView scheduler={scheduler} loading={loading} action={action} onRun={requestSchedule} />
       )}
       {activeTab === 'operations' && (
-        <OperationsHistoryView operations={operations} loading={loading} failed={operationsFailed} />
+        <OperationsHistoryView
+          operations={operations}
+          loading={operationsLoading}
+          failed={operationsError !== null}
+          onRefresh={refreshOperations}
+        />
       )}
       {activeTab === 'guard' && (
         <GuardView guard={guard} loading={loading} action={action} onAction={handleGuardAction} onRemove={requestGuardRemoval} />
@@ -612,6 +623,32 @@ function DeliveryRow({ delivery }: { delivery: NotificationDelivery }) {
   )
 }
 
+/**
+ * The documented response has a top-level `submitted: <operation_id>`, but
+ * the backend currently only puts it inside `detail` as
+ * "submitted: <id>" (terraria-server issue #10). Reading both means the
+ * panel shows real progress today and keeps working once the field is
+ * added — without this, a restart job looks "finished" the instant it is
+ * accepted, while the server is only just starting to restart.
+ */
+function getSubmittedOperationId(
+  result: Record<string, unknown>,
+): string | null {
+  if (typeof result.submitted === 'string' && result.submitted !== '') {
+    return result.submitted
+  }
+
+  const detail = result.detail
+
+  if (typeof detail !== 'string') {
+    return null
+  }
+
+  const match = /^submitted:\s*(\S+)/.exec(detail.trim())
+
+  return match?.[1] ?? null
+}
+
 function EmptyState({ text }: { text: string }) {
   return <div className="ui-panel py-12 text-center text-sm text-gray-600">{text}</div>
 }
@@ -627,15 +664,30 @@ const OPERATION_STATE_CLASSES: Record<string, string> = {
  * Recent long-running operations. The backend keeps the last 50 in API
  * process memory, so this list empties whenever the API restarts.
  */
-function OperationsHistoryView({ operations, loading, failed }: { operations: Operation[]; loading: boolean; failed: boolean }) {
+function OperationsHistoryView({ operations, loading, failed, onRefresh }: { operations: Operation[]; loading: boolean; failed: boolean; onRefresh: () => Promise<void> }) {
   if (loading && !operations.length) return <EmptyState text="Loading operations..." />
   if (!operations.length) {
-    return <EmptyState text={failed
-      ? 'Could not load operations. The API may be restarting.'
-      : 'No operations recorded. The API restarts clear this list.'} />
+    return <div className="space-y-3">
+      <EmptyState text={failed
+        ? 'Could not load operations. The API may be restarting, or the list is briefly unavailable.'
+        : 'No operations recorded. The API restarts clear this list.'} />
+      <button type="button" onClick={() => void onRefresh()} className="ui-button ui-button-secondary w-full">
+        <RefreshCw size={15} /> Refresh
+      </button>
+    </div>
   }
 
-  return <div className="ui-scroll-region space-y-2 pr-1">
+  return <div className="space-y-3">
+    <div className="flex items-center justify-between gap-3 text-xs text-gray-600">
+      <span>{failed
+        ? 'Could not refresh — showing the last list that loaded.'
+        : 'Refreshes automatically every few seconds.'}</span>
+      <button type="button" onClick={() => void onRefresh()} className="ui-button ui-button-secondary">
+        <RefreshCw size={14} /> Refresh
+      </button>
+    </div>
+
+    <div className="ui-scroll-region space-y-2 pr-1">
     {operations.map((operation) => {
       const progress = Math.max(0, Math.min(100, operation.progress ?? 0))
       const stateClass = OPERATION_STATE_CLASSES[operation.state] ?? 'text-gray-500'
@@ -651,8 +703,14 @@ function OperationsHistoryView({ operations, loading, failed }: { operations: Op
         </div>
 
         {operation.state === 'running' || operation.state === 'pending' ? (
-          <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/[0.05]">
-            <div className="h-full rounded-full bg-emerald-400/70 transition-all" style={{ width: `${progress}%` }} />
+          <div className="mt-3">
+            <div className="mb-1 flex items-center justify-between text-[11px] text-gray-600">
+              <span>{operation.message || 'In progress'}</span>
+              <span>{progress}%</span>
+            </div>
+            <div className="h-1.5 overflow-hidden rounded-full bg-white/[0.05]">
+              <div className="h-full rounded-full bg-emerald-400/70 transition-all" style={{ width: `${progress}%` }} />
+            </div>
           </div>
         ) : null}
 
@@ -661,10 +719,12 @@ function OperationsHistoryView({ operations, loading, failed }: { operations: Op
           <div>Finished {formatDate(operation.finished_at)}</div>
         </div>
 
-        {operation.message && <div className="mt-2 text-xs text-gray-500">{operation.message}</div>}
+        {operation.message && (operation.state === 'succeeded' || operation.state === 'failed') &&
+          <div className="mt-2 text-xs text-gray-500">{operation.message}</div>}
         {operation.error && <div className="mt-2 text-xs text-red-400">{operation.error}</div>}
       </div>
     })}
+    </div>
   </div>
 }
 

@@ -19,6 +19,9 @@ import {
 } from '../api/server'
 import { ApiError } from '../api/client'
 import { formatErrorReport } from '../api/errors'
+import { isPasswordMask } from '../api/settings'
+import { CAPABILITIES, useApiMeta } from '../context/apiMeta'
+import { useOperations } from '../context/operations'
 import ConfirmDialog from '../components/ConfirmDialog'
 
 import {
@@ -54,6 +57,16 @@ export default function Settings() {
   const [showPassword, setShowPassword] =
     useState(false)
 
+  const { activeExclusive } = useOperations()
+
+  const { hasCapability } = useApiMeta()
+
+  // A backend without this capability still returns the plaintext
+  // password, so `password_set` cannot be trusted as state there.
+  const passwordMasked = hasCapability(
+    CAPABILITIES.configPasswordMasked,
+  )
+
   const [pendingLowMaxPlayers, setPendingLowMaxPlayers] =
     useState<number | null>(null)
 
@@ -62,6 +75,12 @@ export default function Settings() {
 
   const [lowLimitReason, setLowLimitReason] =
     useState('')
+
+  const [passwordSet, setPasswordSet] =
+    useState(false)
+
+  const [confirmPasswordClear, setConfirmPasswordClear] =
+    useState(false)
 
 
   async function loadSettings(
@@ -88,6 +107,12 @@ export default function Settings() {
 
       setMotd(
         config.values.motd ?? data.motd ?? '',
+      )
+
+      // `config.values.password` is a mask since API 2.0.0, so only this
+      // flag can tell us whether clearing would actually destroy a secret.
+      setPasswordSet(
+        config.password_set ?? data.password_set ?? false,
       )
 
     } catch (error) {
@@ -243,6 +268,23 @@ export default function Settings() {
       return
     }
 
+    // Catch the mask locally: the API would answer 400, but saying so
+    // before the round trip is clearer than a rejection.
+    if (isPasswordMask(password)) {
+      setMessage(
+        'That is the masked placeholder, not a real password. Leave the field empty to keep the current one, or type a new password.',
+      )
+      return
+    }
+
+    // Since API 2.0.0 an empty value *clears* the password, so sending an
+    // empty field over an existing password destroys a secret. Make that
+    // an explicit choice rather than a side effect of clicking Save.
+    if (password === '' && passwordSet) {
+      setConfirmPasswordClear(true)
+      return
+    }
+
     try {
       setSaving('password')
       setMessage(
@@ -253,6 +295,8 @@ export default function Settings() {
 
       setPassword('')
 
+      setPasswordSet(password !== '')
+
       setMessage(
         password
           ? 'Server password updated.'
@@ -262,6 +306,26 @@ export default function Settings() {
     } catch (error) {
       console.error(error)
 
+      setMessage(formatErrorReport(error))
+    } finally {
+      setSaving(null)
+    }
+  }
+
+
+  async function confirmPasswordClearAction() {
+    try {
+      setSaving('password')
+      setMessage('Removing the server password...')
+
+      await updatePassword('')
+
+      setPassword('')
+      setPasswordSet(false)
+      setConfirmPasswordClear(false)
+      setMessage('Server password cleared.')
+    } catch (error) {
+      console.error(error)
       setMessage(formatErrorReport(error))
     } finally {
       setSaving(null)
@@ -447,7 +511,8 @@ export default function Settings() {
               }
               disabled={
                 loading ||
-                saving !== null
+                saving !== null ||
+                activeExclusive !== null
               }
               className={[
                 'w-28 rounded-lg',
@@ -463,12 +528,14 @@ export default function Settings() {
             />
 
             <SaveButton
+              label="Save max players"
               loading={
                 saving === 'maxplayers'
               }
               disabled={
                 loading ||
-                saving !== null
+                saving !== null ||
+                activeExclusive !== null
               }
               onClick={
                 handleMaxPlayers
@@ -520,7 +587,8 @@ export default function Settings() {
               }
               disabled={
                 loading ||
-                saving !== null
+                saving !== null ||
+                activeExclusive !== null
               }
               className={[
                 'min-w-0 flex-1',
@@ -537,12 +605,14 @@ export default function Settings() {
             />
 
             <SaveButton
+              label="Save MOTD"
               loading={
                 saving === 'motd'
               }
               disabled={
                 loading ||
-                saving !== null
+                saving !== null ||
+                activeExclusive !== null
               }
               onClick={handleMotd}
             />
@@ -580,8 +650,26 @@ export default function Settings() {
 
         <SettingRow
           label="Server Password"
-          description="Leave empty to remove the current password."
+          description={
+            passwordMasked
+              ? 'Type a new password to replace it, or use the button beside it to remove it. The value is never sent back to the panel.'
+              : 'Leave empty to remove the current password.'
+          }
         >
+
+          {passwordMasked && (
+            <div className="mb-2">
+              <span
+                className={
+                  passwordSet
+                    ? 'ui-status ui-status-success'
+                    : 'ui-status ui-status-neutral'
+                }
+              >
+                {passwordSet ? 'Password set' : 'No password'}
+              </span>
+            </div>
+          )}
 
           <div className="flex min-w-0 gap-2">
 
@@ -601,7 +689,8 @@ export default function Settings() {
                 }
                 disabled={
                   loading ||
-                  saving !== null
+                  saving !== null ||
+                  activeExclusive !== null
                 }
                 placeholder="Enter new password"
                 className={[
@@ -648,12 +737,14 @@ export default function Settings() {
 
 
             <SaveButton
+              label="Save server password"
               loading={
                 saving === 'password'
               }
               disabled={
                 loading ||
-                saving !== null
+                saving !== null ||
+                activeExclusive !== null
               }
               onClick={handlePassword}
             />
@@ -693,6 +784,20 @@ export default function Settings() {
         onConfirm={confirmLowMaxPlayers}
         loading={saving === 'maxplayers'}
         status={message || lowLimitReason || undefined}
+      />
+
+      <ConfirmDialog
+        open={confirmPasswordClear}
+        onOpenChange={(open) => {
+          if (!open && saving === null) {
+            setConfirmPasswordClear(false)
+          }
+        }}
+        title="Remove the server password?"
+        description="The field is empty, and since API 2.0.0 an empty password clears it. Players will be able to join without a password. Send a non-empty value instead if you meant to change it."
+        confirmText="Remove password"
+        onConfirm={confirmPasswordClearAction}
+        loading={saving === 'password'}
       />
 
     </div>
@@ -775,16 +880,21 @@ function SettingRow({
 
 
 function SaveButton({
+  label,
   loading,
   disabled,
   onClick,
 }: {
+  /** Accessible name; several of these sit next to other icon buttons. */
+  label: string
   loading: boolean
   disabled: boolean
   onClick: () => void
 }) {
   return (
     <button
+      type="button"
+      aria-label={label}
       onClick={onClick}
       disabled={disabled}
       className={[

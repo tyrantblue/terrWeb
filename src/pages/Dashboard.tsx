@@ -23,6 +23,8 @@ import {
 } from '../api/server'
 import { runOperation } from '../api/world'
 import { useConsoleHeartbeat } from '../context/consoleHeartbeat'
+import { useOperations } from '../context/operations'
+import { useAbortOnUnmount } from '../hooks/useAbortOnUnmount'
 import { formatErrorReport } from '../api/errors'
 import ConfirmDialog from '../components/ConfirmDialog'
 import {
@@ -37,11 +39,18 @@ export default function Dashboard() {
 
   const heartbeat = useConsoleHeartbeat()
 
+  const { activeExclusive } = useOperations()
+
+  const operationAbort = useAbortOnUnmount()
+
   // `stalled` is the pipeline being dead; `error` is the probe itself
-  // failing. Both mean the panel cannot be trusted about server state.
+  // failing. `log_stalled` is the API 2.0.0+ flag on the server status,
+  // which is the same signal but refreshed with the 5s status poll rather
+  // than the 60s heartbeat job.
   const heartbeatFault =
     heartbeat.state === 'stalled' ||
-    heartbeat.state === 'error'
+    heartbeat.state === 'error' ||
+    status?.log_stalled === true
 
   const [action, setAction] =
     useState<string | null>(null)
@@ -62,6 +71,7 @@ export default function Dashboard() {
         // A running restart means the user's intent is already being
         // carried out, so follow it instead of failing.
         adoptKind: 'server.restart',
+        signal: operationAbort.current?.signal,
         onProgress: (current) => {
           setMessage(
             current.message ??
@@ -287,7 +297,9 @@ export default function Dashboard() {
           </div>
 
           <div className="mt-1.5 text-xs text-red-300/80">
-            {heartbeat.detail}
+            {heartbeat.detail || (typeof status?.log_age === 'number'
+              ? `The server log has not advanced for ${Math.round(status.log_age)}s.`
+              : '')}
           </div>
 
           <div className="mt-1.5 text-xs text-red-300/70">
@@ -526,6 +538,24 @@ export default function Dashboard() {
         icon={<Activity size={17} />}
       >
 
+        {activeExclusive && (
+          <div
+            role="status"
+            aria-live="polite"
+            className={[
+              'mb-3 rounded-lg',
+              'border border-amber-500/20',
+              'bg-amber-500/[0.06]',
+              'px-3 py-2',
+              'text-xs text-amber-300',
+            ].join(' ')}
+          >
+            <span className="font-mono">{activeExclusive.kind}</span> is already
+            running ({activeExclusive.progress}%), so restart-class actions are
+            disabled until it finishes.
+          </div>
+        )}
+
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
 
           <ControlButton
@@ -587,7 +617,10 @@ export default function Dashboard() {
               // Gate on the API, not on the game server: a stopped
               // server is exactly when you want to bring it back up.
               connectivity === 'unreachable' ||
-              connectivity === 'connecting'
+              connectivity === 'connecting' ||
+              // A running exclusive operation would answer 409; disable
+              // the button instead of letting the click fail.
+              activeExclusive !== null
             }
             onClick={() => {
               setMessage('')

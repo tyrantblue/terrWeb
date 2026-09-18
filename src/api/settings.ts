@@ -40,6 +40,11 @@ export function updateConfig(
           ? { confirm_low_max_players: true }
           : {}),
       }),
+      // The backend persists to serverconfig.txt *before* applying to the
+      // running console. If the apply step returns 503 the file is already
+      // written, so a replay would find nothing changed and report success
+      // while applying nothing.
+      retry: false,
     },
   )
 }

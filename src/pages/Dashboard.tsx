@@ -1,5 +1,4 @@
 import {
-  useEffect,
   useState,
 } from 'react'
 
@@ -8,27 +7,41 @@ import {
   Clock,
   Database,
   Moon,
+  Power,
   Save,
   Server,
   Sun,
+  TriangleAlert,
   Users,
 } from 'lucide-react'
 
 import {
-  getServerStatus,
+  restartServer,
   saveServer,
   setTime,
-  type ServerStatus,
   type ServerTime,
 } from '../api/server'
+import { runOperation } from '../api/world'
+import { useConsoleHeartbeat } from '../context/consoleHeartbeat'
+import { formatErrorReport } from '../api/errors'
+import ConfirmDialog from '../components/ConfirmDialog'
+import {
+  useServerStatus,
+  type Connectivity,
+} from '../context/serverStatus'
 
 
 export default function Dashboard() {
-  const [status, setStatus] =
-    useState<ServerStatus | null>(null)
+  const { status, connectivity, refresh } =
+    useServerStatus()
 
-  const [loading, setLoading] =
-    useState(true)
+  const heartbeat = useConsoleHeartbeat()
+
+  // `stalled` is the pipeline being dead; `error` is the probe itself
+  // failing. Both mean the panel cannot be trusted about server state.
+  const heartbeatFault =
+    heartbeat.state === 'stalled' ||
+    heartbeat.state === 'error'
 
   const [action, setAction] =
     useState<string | null>(null)
@@ -36,20 +49,42 @@ export default function Dashboard() {
   const [message, setMessage] =
     useState('')
 
+  const [confirmRestart, setConfirmRestart] =
+    useState(false)
 
-  async function refresh() {
+
+  async function handleRestart() {
     try {
-      const data =
-        await getServerStatus()
+      setAction('restart')
+      setMessage('Restarting the server...')
 
-      setStatus(data)
+      await runOperation(restartServer, {
+        // A running restart means the user's intent is already being
+        // carried out, so follow it instead of failing.
+        adoptKind: 'server.restart',
+        onProgress: (current) => {
+          setMessage(
+            current.message ??
+              `Restarting... ${current.progress}%`,
+          )
+        },
+        onAdopt: () => {
+          setMessage(
+            'A restart is already running — following it.',
+          )
+        },
+      })
+
+      setConfirmRestart(false)
+      setMessage('Server restarted.')
+
+      await refresh()
     } catch (error) {
-      console.error(
-        'Failed to load server status:',
-        error,
-      )
+      console.error(error)
+
+      setMessage(`Restart failed. ${formatErrorReport(error)}`)
     } finally {
-      setLoading(false)
+      setAction(null)
     }
   }
 
@@ -69,9 +104,7 @@ export default function Dashboard() {
     } catch (error) {
       console.error(error)
 
-      setMessage(
-        'Failed to save world.',
-      )
+      setMessage(formatErrorReport(error))
     } finally {
       setAction(null)
     }
@@ -98,38 +131,30 @@ export default function Dashboard() {
     } catch (error) {
       console.error(error)
 
-      setMessage(
-        'Failed to change time.',
-      )
+      setMessage(formatErrorReport(error))
     } finally {
       setAction(null)
     }
   }
 
 
-  useEffect(() => {
-    const initialLoad = window.setTimeout(
-      refresh,
-      0,
-    )
-
-    const timer = setInterval(
-      refresh,
-      5000,
-    )
-
-    return () => {
-      window.clearTimeout(initialLoad)
-      clearInterval(timer)
-    }
-  }, [])
-
-
   const online =
     status?.players.online ?? 0
 
   const maxPlayers =
-    status?.max_players ?? 0
+    status?.max_players ?? null
+
+  // `connectivity` is derived once in the status provider so the layout
+  // header and this page can never disagree about the server state.
+  const connectivityLabel = connectivity === 'connecting'
+    ? 'Connecting...'
+    : connectivity === 'unreachable'
+      ? 'API Unreachable'
+      : connectivity === 'online'
+        ? 'Server Online'
+        : 'Server Offline'
+
+  const connectivityTone = CONNECTIVITY_TONES[connectivity]
 
 
   return (
@@ -210,12 +235,8 @@ export default function Dashboard() {
               'self-start sm:self-auto',
               'rounded-full',
               'border',
-              status?.running
-                ? 'border-emerald-500/15'
-                : 'border-red-500/15',
-              status?.running
-                ? 'bg-emerald-500/[0.05]'
-                : 'bg-red-500/[0.05]',
+              connectivityTone.border,
+              connectivityTone.bg,
               'px-3.5 py-2',
             ].join(' ')}
           >
@@ -224,25 +245,17 @@ export default function Dashboard() {
               className={[
                 'h-2 w-2',
                 'rounded-full',
-                status?.running
-                  ? 'bg-emerald-400'
-                  : 'bg-red-400',
+                connectivityTone.dot,
               ].join(' ')}
             />
 
             <span
               className={[
                 'text-sm font-medium',
-                status?.running
-                  ? 'text-emerald-400'
-                  : 'text-red-400',
+                connectivityTone.text,
               ].join(' ')}
             >
-              {loading
-                ? 'Connecting...'
-                : status?.running
-                  ? 'Server Online'
-                  : 'Server Offline'}
+              {connectivityLabel}
             </span>
 
           </div>
@@ -253,8 +266,42 @@ export default function Dashboard() {
 
 
       {/* Status message */}
+      {/* The heartbeat job reports success even when the log pipeline is
+          stalled, so this alert is the only place the Dashboard can tell
+          the operator that the panel has gone blind. */}
+      {heartbeatFault && (
+        <div
+          role="alert"
+          className={[
+            'rounded-lg',
+            'border border-red-500/20',
+            'bg-red-500/[0.07]',
+            'px-4 py-3',
+          ].join(' ')}
+        >
+          <div className="flex items-center gap-2 text-sm font-medium text-red-300">
+            <TriangleAlert size={15} />
+            {heartbeat.state === 'error'
+              ? 'The heartbeat probe is failing'
+              : 'The panel can no longer read the server log'}
+          </div>
+
+          <div className="mt-1.5 text-xs text-red-300/80">
+            {heartbeat.detail}
+          </div>
+
+          <div className="mt-1.5 text-xs text-red-300/70">
+            Recovery: run <span className="font-mono">save</span>, then restart the
+            Terraria container (<span className="font-mono">docker compose restart terraria</span>).
+            {' '}Server status shown here is the last value the panel managed to read.
+          </div>
+        </div>
+      )}
+
       {message && (
         <div
+          role="status"
+          aria-live="polite"
           className={[
             'flex items-center',
             'rounded-lg',
@@ -276,16 +323,20 @@ export default function Dashboard() {
           icon={<Activity size={18} />}
           label="Status"
           value={
-            loading
+            connectivity === 'connecting'
               ? '—'
-              : status?.running
-                ? 'Online'
-                : 'Offline'
+              : connectivity === 'unreachable'
+                ? 'Unreachable'
+                : connectivity === 'online'
+                  ? 'Online'
+                  : 'Stopped'
           }
           accent={
-            status?.running
+            connectivity === 'online'
               ? 'green'
-              : 'red'
+              : connectivity === 'offline'
+                ? 'amber'
+                : 'red'
           }
         />
 
@@ -302,7 +353,7 @@ export default function Dashboard() {
           label="Players"
           value={
             status
-              ? `${online} / ${maxPlayers}`
+              ? `${online} / ${maxPlayers ?? '—'}`
               : '—'
           }
         />
@@ -387,7 +438,7 @@ export default function Dashboard() {
                 'text-gray-500',
               ].join(' ')}
             >
-              {online} / {maxPlayers}
+              {online} / {maxPlayers ?? '—'}
             </span>
           }
         >
@@ -475,7 +526,7 @@ export default function Dashboard() {
         icon={<Activity size={17} />}
       >
 
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
 
           <ControlButton
             icon={<Save size={17} />}
@@ -527,6 +578,23 @@ export default function Dashboard() {
             }
           />
 
+          <ControlButton
+            icon={<Power size={17} />}
+            label="Restart"
+            loading={action === 'restart'}
+            disabled={
+              action !== null ||
+              // Gate on the API, not on the game server: a stopped
+              // server is exactly when you want to bring it back up.
+              connectivity === 'unreachable' ||
+              connectivity === 'connecting'
+            }
+            onClick={() => {
+              setMessage('')
+              setConfirmRestart(true)
+            }}
+          />
+
         </div>
 
       </Panel>
@@ -543,6 +611,22 @@ export default function Dashboard() {
 
         Server status refreshes every 5 seconds
       </div>
+
+
+      <ConfirmDialog
+        open={confirmRestart}
+        onOpenChange={(open) => {
+          if (!open && action === null) {
+            setConfirmRestart(false)
+          }
+        }}
+        title="Restart server"
+        description="Restart the Terraria server process now? Connected players will be disconnected and the world is saved first."
+        confirmText="Restart"
+        onConfirm={handleRestart}
+        loading={action === 'restart'}
+        status={message || undefined}
+      />
 
     </div>
   )
@@ -562,8 +646,24 @@ function StatCard({
   icon: React.ReactNode
   label: string
   value: string
-  accent?: 'green' | 'red'
+  accent?: 'green' | 'red' | 'amber'
 }) {
+  const accentTile = accent === 'green'
+    ? 'bg-emerald-500/10 text-emerald-400'
+    : accent === 'red'
+      ? 'bg-red-500/10 text-red-400'
+      : accent === 'amber'
+        ? 'bg-amber-500/10 text-amber-400'
+        : 'bg-white/[0.04] text-gray-500'
+
+  const accentValue = accent === 'green'
+    ? 'text-emerald-400'
+    : accent === 'red'
+      ? 'text-red-400'
+      : accent === 'amber'
+        ? 'text-amber-400'
+        : 'text-gray-100'
+
   return (
     <div
       className={[
@@ -583,11 +683,7 @@ function StatCard({
             'flex h-9 w-9',
             'items-center justify-center',
             'rounded-lg',
-            accent === 'green'
-              ? 'bg-emerald-500/10 text-emerald-400'
-              : accent === 'red'
-                ? 'bg-red-500/10 text-red-400'
-                : 'bg-white/[0.04] text-gray-500',
+            accentTile,
           ].join(' ')}
         >
           {icon}
@@ -612,11 +708,7 @@ function StatCard({
           className={[
             'mt-1.5',
             'text-xl font-semibold',
-            accent === 'green'
-              ? 'text-emerald-400'
-              : accent === 'red'
-                ? 'text-red-400'
-                : 'text-gray-100',
+            accentValue,
           ].join(' ')}
         >
           {value}
@@ -815,4 +907,46 @@ function formatTimeName(
     case 'midnight':
       return 'midnight'
   }
+}
+
+
+/* ------------------------------ */
+/* Connectivity tones              */
+/* ------------------------------ */
+
+type ConnectivityTone = Connectivity
+
+const CONNECTIVITY_TONES: Record<
+  ConnectivityTone,
+  {
+    border: string
+    bg: string
+    dot: string
+    text: string
+  }
+> = {
+  online: {
+    border: 'border-emerald-500/15',
+    bg: 'bg-emerald-500/[0.05]',
+    dot: 'bg-emerald-400',
+    text: 'text-emerald-400',
+  },
+  offline: {
+    border: 'border-amber-500/15',
+    bg: 'bg-amber-500/[0.05]',
+    dot: 'bg-amber-400',
+    text: 'text-amber-400',
+  },
+  unreachable: {
+    border: 'border-red-500/15',
+    bg: 'bg-red-500/[0.05]',
+    dot: 'bg-red-400',
+    text: 'text-red-400',
+  },
+  connecting: {
+    border: 'border-white/[0.07]',
+    bg: 'bg-white/[0.03]',
+    dot: 'bg-gray-500',
+    text: 'text-gray-400',
+  },
 }

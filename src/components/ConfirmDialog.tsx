@@ -16,6 +16,8 @@ interface ConfirmDialogProps {
 
   onConfirm: () => void
   loading?: boolean
+  /** Progress or failure text shown inside the dialog. */
+  status?: string
   children?: ReactNode
 }
 
@@ -29,9 +31,23 @@ export default function ConfirmDialog({
   cancelText = 'Cancel',
   onConfirm,
   loading = false,
+  status,
   children,
 }: ConfirmDialogProps) {
-  function handleConfirm() {
+  /**
+   * `AlertDialog.Action` is Radix's `Dialog.Close`, so it calls
+   * `onOpenChange(false)` in the same click event. That would unmount the
+   * dialog before an async `onConfirm` settles — the loading state would
+   * never render and any follow-up UI (such as a failure message or a
+   * secondary picker) could not be shown. `preventDefault()` makes
+   * `composeEventHandlers` skip the close, leaving the caller in charge:
+   * it closes the dialog by clearing its own target once done.
+   */
+  function handleConfirm(
+    event: React.MouseEvent<HTMLButtonElement>,
+  ) {
+    event.preventDefault()
+
     if (loading) {
       return
     }
@@ -118,6 +134,22 @@ export default function ConfirmDialog({
           </div>
 
           {children}
+
+          {status && (
+            <div
+              role="status"
+              aria-live="polite"
+              className={[
+                'mt-4 rounded-lg',
+                'border border-white/[0.07]',
+                'bg-white/[0.025]',
+                'px-3 py-2',
+                'text-xs text-gray-400',
+              ].join(' ')}
+            >
+              {status}
+            </div>
+          )}
 
 
           {/* Actions */}

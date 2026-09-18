@@ -25,12 +25,17 @@ import {
   deleteWorld,
   getWorlds,
   switchWorld,
+  runOperation,
   uploadWorldWithProgress,
-  waitForOperation,
   type World,
 } from '../api/world'
 
 import ConfirmDialog from '../components/ConfirmDialog'
+import { CAPABILITIES, useApiMeta } from '../context/apiMeta'
+import {
+  describeUploadError,
+  formatErrorReport,
+} from '../api/errors'
 
 type UploadStatus =
   | 'idle'
@@ -65,6 +70,12 @@ const initialUploadState: UploadState = {
 export default function Worlds() {
   const [worlds, setWorlds] =
     useState<World[]>([])
+
+  const { hasCapability } = useApiMeta()
+
+  const canUpload = hasCapability(
+    CAPABILITIES.worldUpload,
+  )
 
   const [loading, setLoading] =
     useState(true)
@@ -209,17 +220,19 @@ export default function Worlds() {
     } catch (error) {
       console.error(error)
 
+      // Reset the dialog so it cannot stay stuck at 100% after a failure;
+      // the dialog renders its own error state from `uploadState`.
       setUploadState(
         (current) => ({
           ...current,
           status: 'error',
+          loaded: 0,
+          percent: 0,
           finishedAt: Date.now(),
         }),
       )
 
-      setMessage(
-        'Failed to upload world',
-      )
+      setMessage(describeUploadError(error))
 
     } finally {
       setUploading(false)
@@ -259,18 +272,16 @@ export default function Worlds() {
         'Switching world...',
       )
 
-      const operation = await switchWorld(file)
+      await runOperation(
+        () => switchWorld(file),
+        {
+          onProgress: (current) => {
+            setSwitchProgress(current.progress)
 
-      await waitForOperation(
-        operation.operation_id,
-        (current) => {
-          setSwitchProgress(
-            current.progress ?? 0,
-          )
-
-          if (current.message) {
-            setMessage(current.message)
-          }
+            if (current.message) {
+              setMessage(current.message)
+            }
+          },
         },
       )
 
@@ -285,9 +296,7 @@ export default function Worlds() {
     } catch (error) {
       console.error(error)
 
-      setMessage(
-        'Failed to switch world',
-      )
+      setMessage(formatErrorReport(error))
 
     } finally {
       setSwitching(null)
@@ -312,26 +321,22 @@ export default function Worlds() {
     try {
       setWorldAction(`backup:${world.file}`)
       setMessage(`Backing up ${world.file}...`)
-      const operation = await backupWorld(world.file)
-
-      await waitForOperation(
-        operation.operation_id,
-        (current) => {
-          setMessage(
-            current.message ??
-              `Backing up ${world.file}... ${current.progress ?? 0}%`,
-          )
+      await runOperation(
+        () => backupWorld(world.file),
+        {
+          onProgress: (current) => {
+            setMessage(
+              current.message ??
+                `Backing up ${world.file}... ${current.progress}%`,
+            )
+          },
         },
       )
 
       setMessage(`Backup created for ${world.file}.`)
     } catch (error) {
       console.error(error)
-      setMessage(
-        error instanceof Error
-          ? error.message
-          : 'Failed to back up world.',
-      )
+      setMessage(formatErrorReport(error))
     } finally {
       setWorldAction(null)
     }
@@ -437,35 +442,38 @@ export default function Worlds() {
         <div className="flex items-center gap-2">
 
           {/* Upload */}
-          <label
-            className={[
-              'ui-button',
-              'ui-button-accent',
+          {/* Upload is only offered when the backend advertises it. */}
+          {canUpload && (
+            <label
+              className={[
+                'ui-button',
+                'ui-button-accent',
 
-              uploading
-                ? [
-                    'cursor-not-allowed',
-                    'opacity-50',
-                  ].join(' ')
-                : 'cursor-pointer',
-            ].join(' ')}
-          >
+                uploading
+                  ? [
+                      'cursor-not-allowed',
+                      'opacity-50',
+                    ].join(' ')
+                  : 'cursor-pointer',
+              ].join(' ')}
+            >
 
-            <Upload size={16} />
+              <Upload size={16} />
 
-            {uploading
-              ? 'Uploading...'
-              : 'Upload World'}
+              {uploading
+                ? 'Uploading...'
+                : 'Upload World'}
 
-            <input
-              type="file"
-              accept=".wld"
-              className="hidden"
-              disabled={uploading}
-              onChange={handleUpload}
-            />
+              <input
+                type="file"
+                accept=".wld"
+                className="hidden"
+                disabled={uploading}
+                onChange={handleUpload}
+              />
 
-          </label>
+            </label>
+          )}
 
           {/* Upload progress */}
           <button

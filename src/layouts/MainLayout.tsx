@@ -20,11 +20,42 @@ import {
   Outlet,
 } from 'react-router-dom'
 import ApiCompatibilityBanner from '../components/ApiCompatibilityBanner'
+import { CAPABILITIES, useApiMeta } from '../context/apiMeta'
+import { useServerStatus } from '../context/serverStatus'
 
 
 export default function MainLayout() {
   const [mobileNavOpen, setMobileNavOpen] =
     useState(false)
+
+  const { status, connectivity, error, lastUpdated } =
+    useServerStatus()
+
+  const { hasCapability } = useApiMeta()
+
+  // A backend that does not advertise the console has no /api/v1/console
+  // surface at all, so offering the page would only produce 404s.
+  const consoleAvailable = hasCapability(CAPABILITIES.serverConsole)
+
+  const serverOnline = connectivity === 'online'
+
+  // `offline` (API reachable, game server down) is amber, not red —
+  // only an unreachable API is a panel-level failure.
+  const tone: StatusTone = connectivity === 'unreachable'
+    ? 'offline'
+    : connectivity === 'connecting'
+      ? 'pending'
+      : connectivity === 'online'
+        ? 'online'
+        : 'idle'
+
+  const statusLabel = tone === 'pending'
+    ? 'Checking...'
+    : tone === 'offline'
+      ? 'API Unreachable'
+      : serverOnline
+        ? 'Server Online'
+        : 'Server Stopped'
 
   useEffect(() => {
     if (!mobileNavOpen) return
@@ -176,15 +207,16 @@ export default function MainLayout() {
             onNavigate={() => setMobileNavOpen(false)}
           />
 
-          <NavItem
-            to="/console"
-            icon={
-              <Terminal size={18} />
-            }
-            label="Console"
-            onNavigate={() => setMobileNavOpen(false)}
-          />
-
+          {consoleAvailable && (
+            <NavItem
+              to="/console"
+              icon={
+                <Terminal size={18} />
+              }
+              label="Console"
+              onNavigate={() => setMobileNavOpen(false)}
+            />
+          )}
           <NavItem
             to="/operations"
             icon={
@@ -220,10 +252,10 @@ export default function MainLayout() {
           <div
             className={[
               'ui-panel-subtle',
-              'border-emerald-500/10',
-              'bg-emerald-500/[0.04]',
+              STATUS_TONES[tone].panel,
               'px-3 py-2.5',
             ].join(' ')}
+            title={error?.message}
           >
 
             <div className="flex items-center gap-2.5">
@@ -234,32 +266,49 @@ export default function MainLayout() {
                 ].join(' ')}
               >
 
-                <span
-                  className={[
-                    'absolute inline-flex',
-                    'h-full w-full',
-                    'animate-ping',
-                    'rounded-full',
-                    'bg-emerald-400/40',
-                  ].join(' ')}
-                />
+                {serverOnline && (
+                  <span
+                    className={[
+                      'absolute inline-flex',
+                      'h-full w-full',
+                      'animate-ping',
+                      'rounded-full',
+                      'bg-emerald-400/40',
+                    ].join(' ')}
+                  />
+                )}
 
                 <span
                   className={[
                     'relative inline-flex',
                     'h-2 w-2',
                     'rounded-full',
-                    'bg-emerald-400',
+                    STATUS_TONES[tone].dot,
                   ].join(' ')}
                 />
 
               </span>
 
-              <span className="text-xs font-medium text-emerald-400/80">
-                Server Online
+              <span
+                className={[
+                  'text-xs font-medium',
+                  STATUS_TONES[tone].text,
+                ].join(' ')}
+              >
+                {statusLabel}
               </span>
 
             </div>
+
+            {status && (
+              <div className="mt-1.5 pl-[18px] text-[11px] text-gray-600">
+                {status.players.online}/{status.max_players ?? '—'} online
+                {status.port ? ` · port ${status.port}` : ''}
+                {connectivity === 'unreachable'
+                  ? ` · last known ${formatClock(lastUpdated)}`
+                  : ''}
+              </div>
+            )}
 
           </div>
 
@@ -320,11 +369,21 @@ export default function MainLayout() {
 
             <Activity
               size={14}
-              className="text-emerald-400"
+              className={
+                connectivity === 'unreachable'
+                  ? 'text-red-400'
+                  : connectivity === 'connecting'
+                    ? 'text-gray-500'
+                    : 'text-emerald-400'
+              }
             />
 
             <span>
-              Connected
+              {connectivity === 'unreachable'
+                ? 'Disconnected'
+                : connectivity === 'connecting'
+                  ? 'Connecting'
+                  : 'Connected'}
             </span>
 
           </div>
@@ -426,4 +485,49 @@ function NavItem({
 
     </NavLink>
   )
+}
+
+
+/* ------------------------------ */
+/* Server status tones             */
+/* ------------------------------ */
+
+function formatClock(value: number | null) {
+  if (value === null) {
+    return 'unknown'
+  }
+
+  return new Date(value).toLocaleTimeString()
+}
+
+type StatusTone =
+  | 'online'
+  | 'idle'
+  | 'offline'
+  | 'pending'
+
+const STATUS_TONES: Record<
+  StatusTone,
+  { panel: string; dot: string; text: string }
+> = {
+  online: {
+    panel: 'border-emerald-500/10 bg-emerald-500/[0.04]',
+    dot: 'bg-emerald-400',
+    text: 'text-emerald-400/80',
+  },
+  idle: {
+    panel: 'border-amber-500/10 bg-amber-500/[0.04]',
+    dot: 'bg-amber-400',
+    text: 'text-amber-400/80',
+  },
+  offline: {
+    panel: 'border-red-500/10 bg-red-500/[0.04]',
+    dot: 'bg-red-400',
+    text: 'text-red-400/80',
+  },
+  pending: {
+    panel: 'border-white/[0.07] bg-white/[0.02]',
+    dot: 'bg-gray-500',
+    text: 'text-gray-500',
+  },
 }

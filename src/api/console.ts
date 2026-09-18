@@ -45,6 +45,24 @@ export function sendCommand(
 }
 
 
+export interface AuditEntry {
+  ts: number
+  command: string
+  actor: string
+}
+
+export interface AuditResponse {
+  entries: AuditEntry[]
+}
+
+/** Commands accepted through the panel, newest first (last 200). */
+export function getConsoleAudit() {
+  return apiFetch<AuditResponse>(
+    '/api/v1/console/audit',
+  )
+}
+
+
 export function createConsoleWebSocket() {
   const url = new URL(API_BASE_URL)
 

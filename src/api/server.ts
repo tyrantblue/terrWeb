@@ -1,9 +1,10 @@
 import { apiFetch } from './client'
+import type { OperationStart } from './world'
 
 
 export interface ServerPlayers {
   online: number
-  max: number
+  max: number | null
   players: Player[]
 }
 
@@ -135,5 +136,39 @@ export function banPlayer(
         'Content-Type': 'application/json',
       },
     },
+  )
+}
+
+
+/**
+ * The ban list lives in `banlist.txt`, which the vanilla console only
+ * ever appends to — it has no `unban` command. The file does not exist
+ * until the first ban, which `exists: false` reports.
+ */
+export interface BanListResponse {
+  bans: string[]
+  source: string
+  exists: boolean
+  note?: string | null
+}
+
+export function getBans() {
+  return apiFetch<BanListResponse>('/api/v1/bans')
+}
+
+/** Removes the name's line from `banlist.txt`. 404 if it is not listed. */
+export function unbanPlayer(name: string) {
+  return apiFetch(
+    `/api/v1/players/${encodeURIComponent(name)}/ban`,
+    { method: 'DELETE' },
+  )
+}
+
+
+/** Restarts the server process. Returns 202 plus an operation to poll. */
+export function restartServer() {
+  return apiFetch<OperationStart>(
+    '/api/v1/server/restart',
+    { method: 'POST' },
   )
 }

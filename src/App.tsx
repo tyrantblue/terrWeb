@@ -5,6 +5,9 @@ import {
 } from 'react-router-dom'
 
 import MainLayout from './layouts/MainLayout'
+import ApiMetaProvider from './context/ApiMetaProvider'
+import ConsoleHeartbeatProvider from './context/ConsoleHeartbeatProvider'
+import ServerStatusProvider from './context/ServerStatusProvider'
 
 import Dashboard from './pages/Dashboard'
 import Worlds from './pages/Worlds'
@@ -18,43 +21,55 @@ function App() {
   return (
     <BrowserRouter>
 
-      <Routes>
+      <ApiMetaProvider>
 
-        <Route element={<MainLayout />}>
+        <ConsoleHeartbeatProvider>
 
-          <Route
-            path="/"
-            element={<Dashboard />}
-          />
+          <ServerStatusProvider>
 
-          <Route
-            path="/worlds"
-            element={<Worlds />}
-          />
+        <Routes>
 
-          <Route
-            path="/players"
-            element={<Players />}
-          />
+          <Route element={<MainLayout />}>
 
-          <Route
-            path="/console"
-            element={<Console />}
-          />
+            <Route
+              path="/"
+              element={<Dashboard />}
+            />
 
-          <Route
-            path="/operations"
-            element={<Operations />}
-          />
+            <Route
+              path="/worlds"
+              element={<Worlds />}
+            />
 
-          <Route
-            path="/settings"
-            element={<Settings />}
-          />
+            <Route
+              path="/players"
+              element={<Players />}
+            />
 
-        </Route>
+            <Route
+              path="/console"
+              element={<Console />}
+            />
 
-      </Routes>
+            <Route
+              path="/operations"
+              element={<Operations />}
+            />
+
+            <Route
+              path="/settings"
+              element={<Settings />}
+            />
+
+          </Route>
+
+        </Routes>
+
+        </ServerStatusProvider>
+
+        </ConsoleHeartbeatProvider>
+
+      </ApiMetaProvider>
 
     </BrowserRouter>
   )

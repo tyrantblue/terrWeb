@@ -18,6 +18,7 @@ import {
   type ServerStatus,
 } from '../api/server'
 import { ApiError } from '../api/client'
+import { formatErrorReport } from '../api/errors'
 import ConfirmDialog from '../components/ConfirmDialog'
 
 import {
@@ -55,6 +56,12 @@ export default function Settings() {
 
   const [pendingLowMaxPlayers, setPendingLowMaxPlayers] =
     useState<number | null>(null)
+
+  const [recommendedMin, setRecommendedMin] =
+    useState<number | null>(null)
+
+  const [lowLimitReason, setLowLimitReason] =
+    useState('')
 
 
   async function loadSettings(
@@ -131,21 +138,33 @@ export default function Settings() {
     } catch (error) {
       console.error(error)
 
+      // The threshold belongs to the backend: it ships the reason and the
+      // recommended minimum in `error.details`, so a change there must not
+      // require a frontend release.
       if (
         error instanceof ApiError &&
         error.status === 409 &&
-        value < 64
+        error.details?.reason === 'phantom-full'
       ) {
-        setPendingLowMaxPlayers(value)
-        setMessage(
-          'Low player limits require confirmation.',
+        const recommended = Number(
+          error.details.recommended_min,
         )
+
+        setPendingLowMaxPlayers(value)
+        setRecommendedMin(
+          Number.isFinite(recommended) ? recommended : null,
+        )
+        setLowLimitReason(
+          error.message ||
+            'Unsolicted connections consume player slots.',
+        )
+        // Leave `message` empty so the dialog shows the backend's reason;
+        // the dialog title already explains that confirmation is needed.
+        setMessage('')
         return
       }
 
-      setMessage(
-        'Failed to update max players.',
-      )
+      setMessage(formatErrorReport(error))
     } finally {
       setSaving(null)
     }
@@ -169,9 +188,7 @@ export default function Settings() {
       await loadSettings(false)
     } catch (error) {
       console.error(error)
-      setMessage(
-        'Failed to update max players.',
-      )
+      setMessage(formatErrorReport(error))
     } finally {
       setSaving(null)
     }
@@ -207,9 +224,7 @@ export default function Settings() {
     } catch (error) {
       console.error(error)
 
-      setMessage(
-        'Failed to update MOTD.',
-      )
+      setMessage(formatErrorReport(error))
     } finally {
       setSaving(null)
     }
@@ -247,9 +262,7 @@ export default function Settings() {
     } catch (error) {
       console.error(error)
 
-      setMessage(
-        'Failed to update password.',
-      )
+      setMessage(formatErrorReport(error))
     } finally {
       setSaving(null)
     }
@@ -669,10 +682,17 @@ export default function Settings() {
           }
         }}
         title="Use a low player limit?"
-        description={`A limit below 64 can appear full because unsolicited connections consume slots. Continue with ${pendingLowMaxPlayers ?? ''} players?`}
+        description={
+          `The game counts every unsolicited connection against the player limit, so a low cap can look full when nobody is playing.${
+            recommendedMin !== null
+              ? ` The server recommends at least ${recommendedMin}.`
+              : ''
+          } Continue with ${pendingLowMaxPlayers ?? ''} players?`
+        }
         confirmText="Use this limit"
         onConfirm={confirmLowMaxPlayers}
         loading={saving === 'maxplayers'}
+        status={message || lowLimitReason || undefined}
       />
 
     </div>

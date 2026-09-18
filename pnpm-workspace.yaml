@@ -1,0 +1,7 @@
+# pnpm blocks dependency build scripts by default. Vite resolves esbuild's
+# platform binary through its optional dependency and Wrangler ships a
+# prebuilt workerd, so neither postinstall is needed; denying them keeps
+# `pnpm install` deterministic and warning-free.
+allowBuilds:
+  esbuild: false
+  workerd: false

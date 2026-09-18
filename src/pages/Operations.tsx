@@ -4,6 +4,7 @@ import {
   type FormEvent,
 } from 'react'
 import {
+  Activity,
   ArchiveRestore,
   Bell,
   CalendarClock,
@@ -18,8 +19,10 @@ import {
 } from 'lucide-react'
 
 import {
+  CONSOLE_HEARTBEAT_JOB,
   allowIp,
   banIp,
+  classifyHeartbeatDetail,
   getBackups,
   getGuard,
   getNotifications,
@@ -33,16 +36,25 @@ import {
   type Backup,
   type BackupsResponse,
   type GuardResponse,
+  type NotificationDelivery,
   type NotificationsResponse,
   type SchedulerResponse,
 } from '../api/operations'
 import { ApiError } from '../api/client'
-import { waitForOperation } from '../api/world'
+import { formatErrorReport } from '../api/errors'
+import {
+  getOperations,
+  runOperation,
+  waitForOperation,
+  type Operation,
+} from '../api/world'
 import ConfirmDialog from '../components/ConfirmDialog'
+import { useConsoleHeartbeat } from '../context/consoleHeartbeat'
 
 type OperationsTab =
   | 'backups'
   | 'scheduler'
+  | 'operations'
   | 'guard'
   | 'notifications'
 
@@ -53,16 +65,21 @@ const tabs: Array<{
 }> = [
   { id: 'backups', label: 'Backups', icon: ArchiveRestore },
   { id: 'scheduler', label: 'Scheduler', icon: CalendarClock },
+  { id: 'operations', label: 'Operations', icon: Activity },
   { id: 'guard', label: 'Guard', icon: Shield },
   { id: 'notifications', label: 'Notifications', icon: Bell },
 ]
 
 export default function Operations() {
   const [activeTab, setActiveTab] = useState<OperationsTab>('backups')
+  const heartbeat = useConsoleHeartbeat()
+
   const [backups, setBackups] = useState<BackupsResponse | null>(null)
   const [scheduler, setScheduler] = useState<SchedulerResponse | null>(null)
   const [guard, setGuard] = useState<GuardResponse | null>(null)
   const [notifications, setNotifications] = useState<NotificationsResponse | null>(null)
+  const [operations, setOperations] = useState<Operation[]>([])
+  const [operationsFailed, setOperationsFailed] = useState(false)
   const [loading, setLoading] = useState(true)
   const [action, setAction] = useState('')
   const [message, setMessage] = useState('')
@@ -83,12 +100,22 @@ export default function Operations() {
         getScheduler(),
         getGuard(),
         getNotifications(),
+        getOperations(),
       ])
 
       if (results[0].status === 'fulfilled') setBackups(results[0].value)
       if (results[1].status === 'fulfilled') setScheduler(results[1].value)
       if (results[2].status === 'fulfilled') setGuard(results[2].value)
       if (results[3].status === 'fulfilled') setNotifications(results[3].value)
+
+      if (results[4].status === 'fulfilled') {
+        setOperations(results[4].value.operations)
+        setOperationsFailed(false)
+      } else {
+        // Keep the failure visible; otherwise the tab renders the
+        // "no operations" empty state and hides that loading broke.
+        setOperationsFailed(true)
+      }
 
       const failures = results.filter((result) => result.status === 'rejected')
       setMessage(failures.length ? `${failures.length} operations section(s) could not be loaded.` : '')
@@ -109,13 +136,14 @@ export default function Operations() {
     try {
       setAction(`restore:${restoreTarget.name}`)
       setMessage(`Restoring ${restoreTarget.name}...`)
-      const operation = await restoreBackup(
-        restoreTarget.name,
-        restoreFile || undefined,
+      await runOperation(
+        () => restoreBackup(restoreTarget.name, restoreFile || undefined),
+        {
+          onProgress: (current) => {
+            setMessage(current.message ?? `Restoring ${restoreTarget.name}... ${current.progress}%`)
+          },
+        },
       )
-      await waitForOperation(operation.operation_id, (current) => {
-        setMessage(current.message ?? `Restoring ${restoreTarget.name}... ${current.progress ?? 0}%`)
-      })
       setRestoreTarget(null)
       setRestoreCandidates([])
       setRestoreFile('')
@@ -138,7 +166,7 @@ export default function Operations() {
         }
       }
 
-      setMessage(getErrorMessage(error))
+      setMessage(formatErrorReport(error))
     } finally {
       setAction('')
     }
@@ -152,30 +180,60 @@ export default function Operations() {
       const submitted = result.submitted
 
       if (typeof submitted === 'string') {
+        // The job already returned its operation id, so there is no start
+        // request left to conflict with.
         await waitForOperation(
           submitted,
           (current) => {
             setMessage(
               current.message ??
-                `Running ${name}... ${current.progress ?? 0}%`,
+                `Running ${name}... ${current.progress}%`,
             )
           },
         )
       }
 
-      setMessage(`${name} finished.`)
-      setScheduler(await getScheduler())
+      // Report the job's actual outcome. Jobs like `save` skip
+      // themselves when nobody is online, and claiming "finished" for a
+      // no-op is misleading.
+      const refreshed = await getScheduler()
+      setScheduler(refreshed)
+
+      if (name === CONSOLE_HEARTBEAT_JOB) {
+        void heartbeat.refresh()
+      }
+
+      const job = refreshed.jobs.find(
+        (candidate) => candidate.name === name,
+      )
+      const detail = job?.last_detail
+
+      if (job?.last_status === 'skipped') {
+        setMessage(`${name} was skipped${detail ? `: ${detail}` : '.'}`)
+      } else if (job?.last_status === 'failed') {
+        setMessage(`${name} failed${detail ? `: ${detail}` : '.'}`)
+      } else {
+        setMessage(`${name} finished.`)
+      }
+
       return true
     } catch (error) {
-      setMessage(getErrorMessage(error))
+      setMessage(formatErrorReport(error))
       return false
     } finally {
       setAction('')
     }
   }
 
+  function openRestore(backup: Backup) {
+    // Reset the dialog's status area so it only reflects this attempt.
+    setMessage('')
+    setRestoreTarget(backup)
+  }
+
   function requestSchedule(name: string) {
     if (name === 'restart') {
+      setMessage('')
       setScheduleTarget(name)
       return
     }
@@ -194,7 +252,7 @@ export default function Operations() {
       setMessage('Guard updated.')
       return true
     } catch (error) {
-      setMessage(getErrorMessage(error))
+      setMessage(formatErrorReport(error))
       return false
     } finally {
       setAction('')
@@ -205,6 +263,7 @@ export default function Operations() {
     kind: 'allow' | 'ban',
     ip: string,
   ) {
+    setMessage('')
     setGuardTarget({ kind, ip })
   }
 
@@ -231,7 +290,7 @@ export default function Operations() {
       setMessage(result.ok ? 'Test notification delivered.' : result.error ?? 'Test delivery failed.')
       setNotifications(await getNotifications())
     } catch (error) {
-      setMessage(getErrorMessage(error))
+      setMessage(formatErrorReport(error))
     } finally {
       setAction('')
     }
@@ -252,7 +311,7 @@ export default function Operations() {
         </button>
       </div>
 
-      {message && <div className="ui-panel-subtle px-4 py-3 text-sm text-gray-400">{message}</div>}
+      {message && <div role="status" aria-live="polite" className="ui-panel-subtle px-4 py-3 text-sm text-gray-400">{message}</div>}
 
       <div className="flex overflow-x-auto border-b border-white/[0.07]" role="tablist">
         {tabs.map(({ id, label, icon: Icon }) => (
@@ -266,10 +325,13 @@ export default function Operations() {
       </div>
 
       {activeTab === 'backups' && (
-        <BackupsView backups={backups?.backups ?? []} loading={loading} action={action} onRestore={setRestoreTarget} />
+        <BackupsView backups={backups?.backups ?? []} loading={loading} action={action} onRestore={openRestore} />
       )}
       {activeTab === 'scheduler' && (
         <SchedulerView scheduler={scheduler} loading={loading} action={action} onRun={requestSchedule} />
+      )}
+      {activeTab === 'operations' && (
+        <OperationsHistoryView operations={operations} loading={loading} failed={operationsFailed} />
       )}
       {activeTab === 'guard' && (
         <GuardView guard={guard} loading={loading} action={action} onAction={handleGuardAction} onRemove={requestGuardRemoval} />
@@ -292,6 +354,7 @@ export default function Operations() {
         confirmText="Restore"
         onConfirm={handleRestore}
         loading={action.startsWith('restore:')}
+        status={message || undefined}
       >
         {restoreCandidates.length > 0 && (
           <label className="mt-5 block">
@@ -322,6 +385,7 @@ export default function Operations() {
           if (succeeded) setScheduleTarget('')
         }}
         loading={action === `schedule:${scheduleTarget}`}
+        status={message || undefined}
       />
 
       <ConfirmDialog
@@ -345,6 +409,7 @@ export default function Operations() {
           action.startsWith('remove-allow:') ||
           action.startsWith('unban:')
         }
+        status={message || undefined}
       />
     </div>
   )
@@ -362,10 +427,10 @@ function BackupsView({ backups, loading, action, onRestore }: { backups: Backup[
             <div className="truncate font-medium text-gray-200">{backup.name}</div>
             <div className="mt-1 text-xs text-gray-600">{formatDate(backup.created_at)} · {formatSize(backup.size)} · {getBackupFileCount(backup.files)} file(s)</div>
           </div>
-          <span className="ui-status ui-status-neutral uppercase">{backup.kind}</span>
+          <span className="ui-status ui-status-neutral uppercase">{backup.kind ?? 'manual'}</span>
         </div>
-        <button type="button" onClick={() => onRestore(backup)} disabled={!backup.restorable || Boolean(action)} className="ui-button ui-button-accent mt-4 w-full">
-          <RotateCcw size={15} /> {backup.restorable ? 'Restore backup' : 'Not restorable'}
+        <button type="button" onClick={() => onRestore(backup)} disabled={backup.restorable === false || Boolean(action)} className="ui-button ui-button-accent mt-4 w-full">
+          <RotateCcw size={15} /> {backup.restorable === false ? 'Not restorable' : 'Restore backup'}
         </button>
       </div>
     ))}
@@ -379,20 +444,61 @@ function SchedulerView({ scheduler, loading, action, onRun }: { scheduler: Sched
   return <div className="space-y-4">
     <div className="flex items-center justify-between text-sm text-gray-500"><span>Timezone: {scheduler.timezone}</span><StatusBadge ok={scheduler.enabled} on="Enabled" off="Disabled" /></div>
     <div className="ui-scroll-region grid gap-3 pr-1 lg:grid-cols-3">
-      {scheduler.jobs.map((job) => (
-        <div key={job.name} className="ui-panel p-4">
-          <div className="flex items-center justify-between gap-3"><h3 className="font-medium capitalize text-gray-200">{job.name}</h3><StatusBadge ok={job.enabled} on="Active" off="Off" /></div>
-          <p className="mt-2 min-h-10 text-sm leading-5 text-gray-600">{job.description}</p>
-          <div className="mt-4 space-y-2 border-t border-white/[0.05] pt-3 text-xs text-gray-500">
-            <div className="flex justify-between gap-3"><span>Next run</span><span>{formatDate(job.next_run)}</span></div>
-            <div className="flex justify-between gap-3"><span>Last result</span><span className={statusColor(job.last_status)}>{job.last_status ?? 'Never'}</span></div>
-            {job.last_detail && <div className="truncate text-right text-gray-600" title={job.last_detail}>{job.last_detail}</div>}
+      {scheduler.jobs.map((job) => {
+        // The heartbeat job always reports `succeeded`; only
+        // `last_detail` reveals a stalled log pipeline.
+        const heartbeat = job.name === CONSOLE_HEARTBEAT_JOB
+          ? classifyHeartbeatDetail(job.last_detail)
+          : null
+
+        const stalled =
+          heartbeat === 'stalled' || heartbeat === 'error'
+
+        return (
+          <div
+            key={job.name}
+            className={[
+              'ui-panel p-4',
+              stalled ? 'border-red-500/30 bg-red-500/[0.04]' : '',
+            ].join(' ')}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="font-medium capitalize text-gray-200">{job.name}</h3>
+              {stalled
+                ? <span className="ui-status ui-status-danger">{heartbeat === 'error' ? 'Probe error' : 'Stalled'}</span>
+                : heartbeat === 'unavailable'
+                  ? <span className="ui-status ui-status-neutral">Restart window</span>
+                  : <StatusBadge ok={job.enabled} on="Active" off="Off" />}
+            </div>
+            <p className="mt-2 min-h-10 text-sm leading-5 text-gray-600">{job.description}</p>
+            <div className="mt-4 space-y-2 border-t border-white/[0.05] pt-3 text-xs text-gray-500">
+              <div className="flex justify-between gap-3"><span>Next run</span><span>{formatDate(job.next_run)}</span></div>
+              <div className="flex justify-between gap-3">
+                <span>Last result</span>
+                {stalled
+                  ? <span className="text-red-400">
+                      {heartbeat === 'error' ? 'Heartbeat probe failing' : 'Log pipeline stalled'}
+                    </span>
+                  : <span className={statusColor(job.last_status)}>{job.last_status ?? 'Never'}</span>}
+              </div>
+              {job.last_detail && <div className="truncate text-right text-gray-600" title={job.last_detail}>{job.last_detail}</div>}
+            </div>
+
+            {stalled && (
+              <p className="mt-3 text-xs leading-5 text-red-300/80">
+                The game may still be running, but the panel cannot read its log,
+                so status, players and console output are stale. Recovery: run{' '}
+                <span className="font-mono">save</span>, then{' '}
+                <span className="font-mono">docker compose restart terraria</span>.
+              </p>
+            )}
+
+            <button type="button" onClick={() => onRun(job.name)} disabled={!job.enabled || Boolean(action)} className="ui-button ui-button-secondary mt-4 w-full">
+              <Play size={15} /> {action === `schedule:${job.name}` ? 'Running...' : 'Run now'}
+            </button>
           </div>
-          <button type="button" onClick={() => onRun(job.name)} disabled={!job.enabled || Boolean(action)} className="ui-button ui-button-secondary mt-4 w-full">
-            <Play size={15} /> {action === `schedule:${job.name}` ? 'Running...' : 'Run now'}
-          </button>
-        </div>
-      ))}
+        )
+      })}
     </div>
   </div>
 }
@@ -442,15 +548,137 @@ function NotificationsView({ notifications, loading, testing, onTest }: { notifi
   if (loading && !notifications) return <EmptyState text="Loading notifications..." />
   if (!notifications) return <EmptyState text="Notification status is unavailable." />
   return <div className="space-y-5">
-    <div className="ui-panel flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between"><div><div className="flex items-center gap-2"><StatusBadge ok={notifications.enabled} on="Enabled" off="Disabled" /><span className="text-sm text-gray-400">{notifications.format}</span></div><div className="mt-2 text-sm text-gray-600">{notifications.url ?? 'No webhook configured'}</div></div><button type="button" onClick={onTest} disabled={!notifications.enabled || testing} className="ui-button ui-button-accent"><Bell size={15} /> {testing ? 'Sending...' : 'Send test'}</button></div>
+    <div className="ui-panel flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between"><div><div className="flex items-center gap-2"><StatusBadge ok={notifications.enabled} on="Enabled" off="Disabled" /><span className="text-sm text-gray-400">{notifications.format}</span></div><div className="mt-2 text-sm text-gray-600">{notifications.url || 'No webhook configured'}</div></div><button type="button" onClick={onTest} disabled={!notifications.enabled || testing} className="ui-button ui-button-accent"><Bell size={15} /> {testing ? 'Sending...' : 'Send test'}</button></div>
     <section><h3 className="mb-2 text-sm font-medium text-gray-300">Recent deliveries</h3><div className="ui-scroll-region divide-y divide-white/[0.05] border-y border-white/[0.07] pr-1">
-      {notifications.deliveries.length ? notifications.deliveries.map((delivery) => <div key={`${delivery.ts}-${delivery.event}`} className="flex items-start gap-3 py-3"><div className={delivery.ok ? 'mt-0.5 text-emerald-400' : 'mt-0.5 text-red-400'}>{delivery.ok ? <Check size={15} /> : <ShieldX size={15} />}</div><div className="min-w-0 flex-1"><div className="truncate text-sm text-gray-300">{delivery.title}</div><div className="mt-0.5 text-xs text-gray-600">{delivery.event} · {formatDate(delivery.ts)}{delivery.status ? ` · HTTP ${delivery.status}` : ''}</div>{delivery.error && <div className="mt-1 text-xs text-red-400">{delivery.error}</div>}</div></div>) : <div className="py-6 text-center text-sm text-gray-600">No deliveries recorded.</div>}
+      {notifications.deliveries.length ? notifications.deliveries.map((delivery) => <DeliveryRow key={`${delivery.ts}-${delivery.event}`} delivery={delivery} />) : <div className="py-6 text-center text-sm text-gray-600">No deliveries recorded.</div>}
     </div></section>
   </div>
 }
 
+/**
+ * Notification events carry their own severity: a failed *delivery* and a
+ * stalled-log *event* are different kinds of bad, and the second one
+ * means the panel has lost the log pipeline.
+ *
+ * API 2.0.0 renamed `console_stalled` to `log_stalled`; both names are
+ * mapped so a panel talking to an older backend still flags it.
+ */
+const EVENT_SEVERITY: Record<string, { label: string; tone: 'error' | 'warning' | 'info' }> = {
+  log_stalled: { label: 'Log pipeline stalled', tone: 'error' },
+  console_stalled: { label: 'Log pipeline stalled', tone: 'error' },
+  server_error: { label: 'Server error', tone: 'error' },
+  schedule_failed: { label: 'Scheduled task failed', tone: 'error' },
+  restart_skipped: { label: 'Restart skipped', tone: 'warning' },
+  player_booted: { label: 'Connection rejected', tone: 'warning' },
+  player_join: { label: 'Player joined', tone: 'info' },
+  player_leave: { label: 'Player left', tone: 'info' },
+  server_up: { label: 'Server up', tone: 'info' },
+  backup_done: { label: 'Backup completed', tone: 'info' },
+}
+
+const EVENT_TONE_CLASSES = {
+  error: 'text-red-400 border-red-500/25 bg-red-500/[0.06]',
+  warning: 'text-amber-400 border-amber-500/25 bg-amber-500/[0.06]',
+  info: 'text-gray-500 border-white/[0.08] bg-white/[0.02]',
+} as const
+
+function DeliveryRow({ delivery }: { delivery: NotificationDelivery }) {
+  const event = EVENT_SEVERITY[delivery.event]
+  const tone = event?.tone ?? 'info'
+
+  return (
+    <div className="flex items-start gap-3 py-3">
+      <div className={delivery.ok ? 'mt-0.5 text-emerald-400' : 'mt-0.5 text-red-400'}>
+        {delivery.ok ? <Check size={15} /> : <ShieldX size={15} />}
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-sm text-gray-300">{delivery.title}</div>
+        <div className="mt-1 flex flex-wrap items-center gap-2">
+          <span className={`rounded border px-1.5 py-0.5 font-mono text-[10px] ${EVENT_TONE_CLASSES[tone]}`}>
+            {delivery.event}
+          </span>
+          {event && (
+            <span className={`text-[11px] ${tone === 'info' ? 'text-gray-600' : ''} ${tone === 'error' ? 'text-red-400' : ''} ${tone === 'warning' ? 'text-amber-400' : ''}`}>
+              {event.label}
+            </span>
+          )}
+          <span className="text-xs text-gray-600">
+            {formatDate(delivery.ts)}{delivery.status ? ` · HTTP ${delivery.status}` : ''}
+          </span>
+        </div>
+        {delivery.error && <div className="mt-1 text-xs text-red-400">{delivery.error}</div>}
+      </div>
+    </div>
+  )
+}
+
 function EmptyState({ text }: { text: string }) {
   return <div className="ui-panel py-12 text-center text-sm text-gray-600">{text}</div>
+}
+
+const OPERATION_STATE_CLASSES: Record<string, string> = {
+  succeeded: 'text-emerald-400',
+  failed: 'text-red-400',
+  running: 'text-cyan-300',
+  pending: 'text-amber-400',
+}
+
+/**
+ * Recent long-running operations. The backend keeps the last 50 in API
+ * process memory, so this list empties whenever the API restarts.
+ */
+function OperationsHistoryView({ operations, loading, failed }: { operations: Operation[]; loading: boolean; failed: boolean }) {
+  if (loading && !operations.length) return <EmptyState text="Loading operations..." />
+  if (!operations.length) {
+    return <EmptyState text={failed
+      ? 'Could not load operations. The API may be restarting.'
+      : 'No operations recorded. The API restarts clear this list.'} />
+  }
+
+  return <div className="ui-scroll-region space-y-2 pr-1">
+    {operations.map((operation) => {
+      const progress = Math.max(0, Math.min(100, operation.progress ?? 0))
+      const stateClass = OPERATION_STATE_CLASSES[operation.state] ?? 'text-gray-500'
+
+      return <div key={operation.id} className="ui-panel p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className={`text-sm font-medium capitalize ${stateClass}`}>{operation.state}</span>
+            <span className="truncate font-mono text-xs text-gray-500">{operation.kind}</span>
+            <span className="font-mono text-[11px] text-gray-700">{operation.id}</span>
+          </div>
+          <span className="text-xs text-gray-600">{formatDuration(operation)}</span>
+        </div>
+
+        {operation.state === 'running' || operation.state === 'pending' ? (
+          <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/[0.05]">
+            <div className="h-full rounded-full bg-emerald-400/70 transition-all" style={{ width: `${progress}%` }} />
+          </div>
+        ) : null}
+
+        <div className="mt-3 grid gap-1 text-xs text-gray-600 sm:grid-cols-2">
+          <div>Started {formatDate(operation.started_at ?? operation.created_at)}</div>
+          <div>Finished {formatDate(operation.finished_at)}</div>
+        </div>
+
+        {operation.message && <div className="mt-2 text-xs text-gray-500">{operation.message}</div>}
+        {operation.error && <div className="mt-2 text-xs text-red-400">{operation.error}</div>}
+      </div>
+    })}
+  </div>
+}
+
+function formatDuration(operation: Operation) {
+  const start = operation.started_at ?? operation.created_at
+  const end = operation.finished_at
+
+  if (!start || !end) return 'in progress'
+
+  const seconds = Math.max(0, end - start)
+
+  if (seconds < 60) return `${seconds.toFixed(1)}s`
+
+  return `${Math.floor(seconds / 60)}m ${Math.round(seconds % 60)}s`
 }
 
 function StatusBadge({ ok, on, off }: { ok: boolean; on: string; off: string }) {
@@ -478,6 +706,4 @@ function getBackupFileCount(files: number) {
   return files
 }
 
-function getErrorMessage(error: unknown) {
-  return error instanceof Error ? error.message : 'Operation failed.'
-}
+

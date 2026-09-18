@@ -7,6 +7,8 @@ import {
 
 import {
   Circle,
+  History,
+  RefreshCw,
   Send,
   Terminal,
   Trash2,
@@ -15,14 +17,28 @@ import {
 import {
   createConsoleWebSocket,
   getConsole,
+  getConsoleAudit,
   sendCommand,
+  type AuditEntry,
   type ConsoleLine,
 } from '../api/console'
+import { formatErrorReport } from '../api/errors'
+import { CAPABILITIES, useApiMeta } from '../context/apiMeta'
+
+/**
+ * A console line tagged with a stable identity. Server offsets are the
+ * natural key, but the socket replays history with `offset: -1`, so
+ * replayed lines need a locally generated key instead — deduping those
+ * by offset would collapse the whole replay into a single entry.
+ */
+type ConsoleEntry = ConsoleLine & { key: string }
+
+const REPLAY_KEY_PREFIX = 'replay:'
 
 
 export default function Console() {
   const [lines, setLines] =
-    useState<ConsoleLine[]>([])
+    useState<ConsoleEntry[]>([])
 
   const [command, setCommand] =
     useState('')
@@ -39,6 +55,27 @@ export default function Console() {
   const [commandError, setCommandError] =
     useState('')
 
+  const [audit, setAudit] =
+    useState<AuditEntry[]>([])
+
+  const [auditError, setAuditError] =
+    useState('')
+
+  const [showAudit, setShowAudit] =
+    useState(false)
+
+  const { hasCapability } = useApiMeta()
+
+  const consoleAvailable = hasCapability(
+    CAPABILITIES.serverConsole,
+  )
+
+  // A backend without persistent audit has no /api/v1/console/audit
+  // route at all, so offering the tab would only produce a 404 banner.
+  const auditAvailable = hasCapability(
+    CAPABILITIES.consoleAudit,
+  )
+
 
   const terminalRef =
     useRef<HTMLDivElement>(null)
@@ -51,6 +88,26 @@ export default function Console() {
 
   const cursorRef =
     useRef<number | undefined>(undefined)
+
+  const replaySeqRef =
+    useRef(0)
+
+
+  async function loadAudit() {
+    try {
+      const response = await getConsoleAudit()
+
+      setAudit(response.entries)
+      setAuditError('')
+    } catch (error) {
+      console.error(
+        'Failed to load the command audit:',
+        error,
+      )
+
+      setAuditError(formatErrorReport(error))
+    }
+  }
 
 
   async function handleSubmit(
@@ -82,17 +139,18 @@ export default function Console() {
 
       inputRef.current?.focus()
 
+      // The command just became an audit entry.
+      if (auditAvailable) {
+        void loadAudit()
+      }
+
     } catch (error) {
       console.error(
         'Failed to send command:',
         error,
       )
 
-      setCommandError(
-        error instanceof Error
-          ? error.message
-          : 'Failed to send command.',
-      )
+      setCommandError(formatErrorReport(error))
 
     } finally {
       setSending(false)
@@ -106,31 +164,111 @@ export default function Console() {
 
 
   useEffect(() => {
+    if (!auditAvailable) {
+      return
+    }
+
+    const timer = window.setTimeout(() => {
+      void loadAudit()
+    }, 0)
+
+    return () => window.clearTimeout(timer)
+  }, [auditAvailable])
+
+
+  useEffect(() => {
+    // No console surface on this backend; do not open a socket for it.
+    if (!consoleAvailable) {
+      return
+    }
+
     let disposed = false
     let reconnectTimer: number | undefined
 
-    function appendLines(newLines: ConsoleLine[]) {
-      setLines((current) => {
-        const byOffset = new Map(
-          [...current, ...newLines].map(
-            (line) => [line.offset, line],
-          ),
-        )
+    function toEntries(
+      incoming: ConsoleLine[],
+    ): ConsoleEntry[] {
+      return incoming.map((line) => {
+        if (line.offset >= 0) {
+          return {
+            ...line,
+            key: `offset:${line.offset}`,
+          }
+        }
 
-        return Array.from(byOffset.values())
-          .sort((left, right) =>
-            left.offset - right.offset,
-          )
-          .slice(-1000)
+        const sequence = replaySeqRef.current
+
+        replaySeqRef.current += 1
+
+        return {
+          ...line,
+          key: `${REPLAY_KEY_PREFIX}${sequence}`,
+        }
       })
     }
 
-    async function catchUp() {
-      const response = await getConsole(
-        cursorRef.current,
+    /**
+     * Replayed lines carry no server identity, so once authoritative
+     * offsets arrive over REST the placeholders are dropped rather than
+     * left behind as duplicate-looking rows.
+     */
+    function mergeEntries(
+      current: ConsoleEntry[],
+      incoming: ConsoleEntry[],
+      dropReplay: boolean,
+    ): ConsoleEntry[] {
+      const source = dropReplay
+        ? current.filter(
+            (entry) =>
+              !entry.key.startsWith(REPLAY_KEY_PREFIX),
+          )
+        : current
+
+      const byKey = new Map(
+        source.map(
+          (entry) => [entry.key, entry],
+        ),
       )
-      cursorRef.current = response.cursor
-      appendLines(response.lines)
+
+      for (const entry of incoming) {
+        byKey.set(entry.key, entry)
+      }
+
+      return Array.from(byKey.values())
+        .sort(
+          (left, right) =>
+            left.offset - right.offset,
+        )
+        .slice(-1000)
+    }
+
+    function appendLines(newLines: ConsoleLine[]) {
+      if (newLines.length === 0) {
+        return
+      }
+
+      const entries = toEntries(newLines)
+
+      setLines((current) =>
+        mergeEntries(current, entries, false),
+      )
+    }
+
+    async function catchUp(
+      since: number | undefined = cursorRef.current,
+    ) {
+      const response = await getConsole(since)
+
+      cursorRef.current = Math.max(
+        cursorRef.current ?? 0,
+        response.cursor,
+      )
+
+      const entries = toEntries(response.lines)
+
+      setLines((current) =>
+        mergeEntries(current, entries, true),
+      )
     }
 
     function connect() {
@@ -164,13 +302,25 @@ export default function Console() {
           return
         }
 
-        if (
-          message.type === 'hello' &&
-          typeof message.cursor === 'number'
-        ) {
-          if (cursorRef.current === undefined) {
-            cursorRef.current = message.cursor
+        if (message.type === 'hello') {
+          if (typeof message.cursor !== 'number') {
+            return
           }
+
+          const cursor = message.cursor
+          const known = cursorRef.current
+
+          if (known === undefined) {
+            cursorRef.current = cursor
+            return
+          }
+
+          if (cursor > known) {
+            // Output produced between the REST catch-up and this
+            // subscription would otherwise be lost.
+            void catchUp(known).catch(console.error)
+          }
+
           return
         }
 
@@ -179,18 +329,34 @@ export default function Console() {
           typeof message.text !== 'string'
         ) return
 
-        const newLine: ConsoleLine = {
-          offset: message.offset ?? Date.now(),
+        const offset =
+          typeof message.offset === 'number'
+            ? message.offset
+            : -1
+
+        if (
+          offset < 0 &&
+          cursorRef.current !== undefined
+        ) {
+          // Socket replay of history the REST catch-up already loaded
+          // with real offsets. Keeping it would add a phantom entry
+          // pinned to the top of the terminal.
+          return
+        }
+
+        if (offset >= 0) {
+          cursorRef.current = Math.max(
+            cursorRef.current ?? 0,
+            offset,
+          )
+        }
+
+        appendLines([{
+          offset,
           ts: message.ts ?? null,
           kind: message.kind ?? 'output',
           text: message.text,
-        }
-
-        cursorRef.current = Math.max(
-          cursorRef.current ?? 0,
-          newLine.offset,
-        )
-        appendLines([newLine])
+        }])
       }
 
       socket.onerror = () => {
@@ -227,7 +393,7 @@ export default function Console() {
 
       socketRef.current = null
     }
-  }, [])
+  }, [consoleAvailable])
 
 
   useEffect(() => {
@@ -257,6 +423,36 @@ export default function Console() {
       : error
         ? 'text-red-400'
         : 'text-gray-500'
+
+
+  // All hooks have run by this point, so an early return is safe.
+  if (!consoleAvailable) {
+    return (
+      <div className="space-y-6">
+        <section
+          className={[
+            'ui-panel',
+            'px-5 py-10',
+            'text-center',
+          ].join(' ')}
+        >
+          <div className="mb-3 flex justify-center text-gray-600">
+            <Terminal size={22} />
+          </div>
+          <div className="text-sm text-gray-400">
+            This backend does not support the server console.
+          </div>
+          <div className="mt-1.5 text-xs text-gray-600">
+            Its API does not advertise the{' '}
+            <span className="font-mono">
+              {CAPABILITIES.serverConsole}
+            </span>{' '}
+            capability.
+          </div>
+        </section>
+      </div>
+    )
+  }
 
 
   return (
@@ -371,22 +567,57 @@ export default function Console() {
           </div>
 
 
-          <button
-            onClick={clearConsole}
-            className={[
-              'flex items-center gap-2',
-              'rounded-md',
-              'px-2.5 py-1.5',
-              'text-xs text-gray-600',
-              'transition',
-              'hover:bg-white/5',
-              'hover:text-gray-300',
-            ].join(' ')}
-          >
-            <Trash2 size={14} />
+          <div className="flex items-center gap-1">
 
-            Clear
-          </button>
+            {auditAvailable && (
+              <button
+                onClick={() => setShowAudit((current) => !current)}
+                className={[
+                  'flex items-center gap-2',
+                  'rounded-md',
+                  'px-2.5 py-1.5',
+                  'text-xs',
+                  'transition',
+                  showAudit
+                    ? 'bg-white/[0.06] text-gray-200'
+                    : 'text-gray-600',
+                  !showAudit
+                    ? 'hover:bg-white/5 hover:text-gray-300'
+                    : '',
+                ].join(' ')}
+                aria-pressed={showAudit}
+              >
+                <History size={14} />
+
+                Audit
+                {audit.length > 0 && (
+                  <span className="rounded bg-white/[0.08] px-1.5 py-0.5 text-[10px] text-gray-400">
+                    {audit.length}
+                  </span>
+                )}
+
+              </button>
+            )}
+
+
+            <button
+              onClick={clearConsole}
+              className={[
+                'flex items-center gap-2',
+                'rounded-md',
+                'px-2.5 py-1.5',
+                'text-xs text-gray-600',
+                'transition',
+                'hover:bg-white/5',
+                'hover:text-gray-300',
+              ].join(' ')}
+            >
+              <Trash2 size={14} />
+
+              Clear
+            </button>
+
+          </div>
 
         </div>
 
@@ -418,7 +649,7 @@ export default function Console() {
             lines.map(
               (line) => (
                 <div
-                  key={line.offset}
+                  key={line.key}
                   className={[
                     'whitespace-pre-wrap',
                     'break-all',
@@ -516,6 +747,103 @@ export default function Console() {
       </div>
 
 
+      {/* Command audit */}
+      {showAudit && (
+        <section
+          className={[
+            'rounded-xl',
+            'border border-white/[0.07]',
+            'bg-[#17191c]',
+            'p-5',
+          ].join(' ')}
+        >
+
+          <div className="mb-4 flex items-center justify-between gap-3">
+
+            <div className="flex items-center gap-2.5">
+
+              <div
+                className={[
+                  'flex h-8 w-8',
+                  'items-center justify-center',
+                  'rounded-lg',
+                  'bg-white/[0.04]',
+                  'text-gray-400',
+                ].join(' ')}
+              >
+                <History size={16} />
+              </div>
+
+              <div>
+                <h3 className="font-medium text-gray-200">
+                  Command Audit
+                </h3>
+                <p className="mt-0.5 text-xs text-gray-600">
+                  Commands accepted through this API, newest first
+                </p>
+              </div>
+
+            </div>
+
+
+            <button
+              onClick={() => void loadAudit()}
+              className="ui-button ui-button-secondary"
+            >
+              <RefreshCw size={15} />
+              Refresh
+            </button>
+
+          </div>
+
+
+          {auditError ? (
+
+            <div className="rounded-lg border border-red-500/10 bg-red-500/[0.04] px-4 py-3 text-sm text-red-400">
+              {auditError}
+            </div>
+
+          ) : audit.length === 0 ? (
+
+            <div className="rounded-lg border border-white/[0.04] bg-white/[0.015] py-10 text-center text-sm text-gray-600">
+              No commands have been run yet.
+            </div>
+
+          ) : (
+
+            <div className="ui-scroll-region divide-y divide-white/[0.05] border-y border-white/[0.07] pr-1">
+
+              {audit.map((entry, index) => (
+                <div
+                  key={`${entry.ts}-${entry.command}-${index}`}
+                  className="flex items-start justify-between gap-4 py-3"
+                >
+
+                  <div className="min-w-0">
+                    <div className="truncate font-mono text-sm text-gray-300">
+                      {entry.command}
+                    </div>
+                    <div className="mt-0.5 text-xs text-gray-600">
+                      {entry.actor}
+                    </div>
+                  </div>
+
+
+                  <div className="shrink-0 text-xs text-gray-600">
+                    {formatAuditTime(entry.ts)}
+                  </div>
+
+                </div>
+              ))}
+
+            </div>
+
+          )}
+
+        </section>
+      )}
+
+
       {/* Quick commands */}
       <div>
 
@@ -568,6 +896,21 @@ export default function Console() {
     </div>
   )
 }
+
+/**
+ * Audit timestamps are epoch seconds from the API; tolerate a
+ * millisecond value in case the contract widens.
+ */
+function formatAuditTime(ts: number) {
+  if (!Number.isFinite(ts) || ts <= 0) {
+    return '—'
+  }
+
+  const milliseconds = ts < 1e12 ? ts * 1000 : ts
+
+  return new Date(milliseconds).toLocaleString()
+}
+
 
 function getConsoleLineClass(kind: string) {
   switch (kind) {

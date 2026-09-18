@@ -82,8 +82,15 @@ export const API_BASE_URL = 'https://terraria-api.tyrantblue.xyz'
 项目包含 Cloudflare Wrangler 配置。部署命令会先执行生产构建：
 
 ```bash
-pnpm deploy
+pnpm build && pnpm exec wrangler deploy
+# 等价写法：pnpm run deploy
 ```
+
+注意：`deploy` 与 pnpm 内置的 `pnpm deploy <target>` 同名，直接执行 `pnpm deploy`
+会报 `ERR_PNPM_INVALID_DEPLOY_TARGET`，必须走 `pnpm run deploy` 或直接调用 wrangler。
+
+部署需要 `CLOUDFLARE_API_TOKEN`（Account → Workers Scripts → Edit）与
+`CLOUDFLARE_ACCOUNT_ID`。
 
 也可以将 `pnpm build` 生成的 `dist/` 部署到任意静态托管平台。SPA 托管需要把未知路径回退到 `index.html`。
 

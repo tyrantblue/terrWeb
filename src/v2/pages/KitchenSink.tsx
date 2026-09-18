@@ -117,7 +117,7 @@ export default function KitchenSink() {
             <p className="ter-small mb-4">
               The mossy band is the signature detail: officials panels wear it on the top edge.
             </p>
-            <div className="grid gap-4 md:grid-cols-3">
+            <div className="mt-5 grid gap-4 md:grid-cols-3">
               <TerPanel mossTop className="p-0">
                 <div className="p-4 pt-6">
                   <div className="ter-body font-semibold">mossTop</div>

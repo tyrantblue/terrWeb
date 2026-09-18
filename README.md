@@ -98,15 +98,18 @@ Classic UI 顶栏右上角有「New UI」按钮进入预览；v2 页脚/导航�
 
 | 用途 | 默认来源 |
 | --- | --- |
-| 背景、面板三段、像素草带、标题木牌、导航板、logo | `terraria.org/static/media/*`（Re-Logic 官方美术） |
-| 图标（27 个） | `cdn.jsdelivr.net/gh/halfmage/pixelarticons@2.4.1`（MIT，CSS mask 染色） |
-| 字体 | Google Fonts（Open Sans / Merriweather） |
+| 站点图标（`<link rel="icon">` / apple-touch-icon） | `terraria.org/favicon.ico`、`/apple-touch-icon.png` |
+| v2 背景、面板三段、像素草带、标题木牌、导航板、logo | `terraria.org/static/media/*`（Re-Logic 官方美术） |
+| v2 图标（27 个） | `cdn.jsdelivr.net/gh/halfmage/pixelarticons@2.4.1`（MIT，CSS mask 染色） |
+| v2 字体 | Google Fonts（Open Sans / Merriweather） |
 
-因此**打开 `/next` 会向 terraria.org、cdn.jsdelivr.net、fonts.googleapis.com 发起请求**，
-离线或受限网络下会退化成纯色（面板保留 `#5a3d2a` 底色，图标不绘制）。
-右上角「眼睛」按钮可把 chrome 或图标换成自建镜像，选择存在浏览器本地。
+**注意请求范围**：站点图标写在 `index.html` 里，所以**打开任意页面（含 Classic UI）
+都会向 terraria.org 请求它**；v2 页面另外会请求 `cdn.jsdelivr.net` 与 `fonts.googleapis.com`。
+离线或受限网络下的表现：图标缺失、v2 面板退化成纯色（保留 `#5a3d2a` 底色）、图标不绘制；
+Classic UI 的功能不受影响。v2 的 chrome / 图标可以在右上角「眼睛」里换成自建镜像，
+选择存在浏览器本地。
 
-> 注意：官网文件名带内容哈希（`fade_in.84ea52c8.jpg`），Re-Logic 重新部署就会失效；
+> 注意：官网 chrome 文件名带内容哈希（`fade_in.84ea52c8.jpg`），Re-Logic 重新部署就会失效；
 > 长期使用建议自建镜像。详见 `docs/ui-v2-plan.md`。
 
 ## 部署

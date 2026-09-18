@@ -22,7 +22,9 @@
 }
 
 /* The panel/stat/dialog rules in components.css consume this stack; the
-   colour behind it doubles as the fallback if the artwork never loads. *//* The pixel-grass edge. A pseudo-element so it can sit on the panel's top
+   colour behind it doubles as the fallback if the artwork never loads. */
+
+/* The pixel-grass edge. A pseudo-element so it can sit on the panel's top
    border without joining the panel's own background stack. */
 .ter-theme .ter-moss-top::before,
 .ter-theme .ter-moss-bottom::after {
@@ -53,14 +55,6 @@
 .ter-theme .ter-moss-bottom::after {
   bottom: -3px;
   transform: scaleY(-1);
-}
-
-/* Wooden title plate — one official image, stretched to the label width. */
-.ter-theme .ter-titleplate {
-  background-image: var(--ter-title-plate);
-  background-repeat: no-repeat;
-  background-position: center;
-  background-size: 100% 100%;
 }
 
 /* Ornate section divider — the official filigree PNG, centred. */

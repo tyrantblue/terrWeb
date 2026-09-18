@@ -192,6 +192,28 @@
 
 /* ---- motion --------------------------------------------------------- */
 
+/* Route changes and freshly revealed panels fade+rise instead of snapping
+   into place. Kept short so it reads as polish, not as a loading state. */
+@keyframes ter-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.ter-theme .ter-page-enter {
+  animation: ter-enter 220ms ease-out both;
+}
+
+.ter-theme .ter-fade {
+  animation: ter-enter 180ms ease-out both;
+}
+
+
 .ter-theme .ter-lift {
   transition: transform 80ms steps(2, end), filter 80ms linear;
 }

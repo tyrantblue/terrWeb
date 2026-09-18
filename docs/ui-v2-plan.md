@@ -357,20 +357,31 @@ v2 的组件（按现有 `ui-*` 对照）。**美术来源已按 §2 改为运�
 
 1. **外部依赖是当前最大的运营风险**：官网文件名带内容哈希，Re-Logic 重新部署即失效，
    失败时只是退化成纯色（面板保留 `#5a3d2a`），但整站会失去"泰拉味"。
-   建议把这 10 张图镜像到自己的域名（设置里已支持填 `chromeBase`）。
+   另外站点图标也改成引用 `terraria.org/favicon.ico` + `apple-touch-icon.png`
+   （写在 `index.html`，所以 **Classic UI 也会请求它**），本地 favicon 已删除。
+   建议把这 10 张图 + 图标镜像到自己的域名（设置里已支持填 `chromeBase`）。
 2. **27 个图标 = 27 个 SVG 请求**（jsDelivr 有 7 天缓存，首屏仍会弹出式加载）；
    若要更稳可换成本地图标 sprite。
 3. **`/next` 会向 terraria.org / jsDelivr / Google Fonts 发请求**，无用户同意开关；
    Google Fonts 的 `<link>` 每次挂载注入（离开再进入 FOUT 重现）。
-4. **bundle 体积**：v2 的 CSS/JS 无条件进主包（CSS 62KB、JS 447KB），v1 路由也要下载。
+4. **bundle 体积**：v2 的 CSS/JS 无条件进主包（CSS 64KB、JS 447KB），v1 路由也要下载。
    若要拆需要 `/next` 路由级 `lazy()` + 动态 `import('./v2/theme/index.css')`，
    并注意 v2 规则处于无层级（unlayered）、优先于 Tailwind 的 `@layer`。
-5. **`backdrop-filter: blur()`**（`.ter-header` / `.ter-overlay`）在
-   `prefers-reduced-transparency` 下无降级；强制色模式下需复查。
+5. **`backdrop-filter: blur()`** 在 `prefers-reduced-transparency` 下无降级；
+   强制色模式下需复查。（本轮 `.ter-header` 已改为不透明，只剩 `.ter-overlay` 一处。）
 6. **`.ter-lift` / `.ter-h4`** 仍未被引用；`--ter-ok/--ter-warn/--ter-danger` 只在
    KitchenSink 的行内样式里用到，组件内部仍写死字面量。
 7. **文档级滚动条**：`/next` 的主滚动条在 `html`/`body` 上，`.ter-theme ::-webkit-scrollbar`
    管不到，仍是 Classic UI 的灰色圆角条。
 8. `.ter-tab` / `.ter-tabs` / `.ter-badge-*` 的**边框**对比度 1.67–1.99:1，状态另由文字与
    金色边框承载，按 1.4.11 可接受；若后续改掉这些信号需要重新评估。
+9. **滚动收缩头部未做浏览器验证**：`compact` 在 `scrollY > 48` 切换，同时改
+   `flex-direction`（不可过渡）、padding 与 logo 高度（可过渡）。逻辑上内容高度是逐帧重排的，
+   但窄屏（≤360px）下 6 个导航项 + 收缩后的 logo 是否会换行/抖动，需要真机看一眼。
+10. **`.ter-moss-top { margin-top: 3px }` 是同类陷阱**：无层级规则会压过 Tailwind 的 `mt-*`。
+    当前没有调用点同时用 `mt-*` + `ter-moss-top`，但以后加就会静默失效
+    （`.ter-divider` 已经踩过一次）。
+11. **`border-image` 忽略 `border-radius`**：`.ter-tab-active` 的圆角实际不生效（2px，可忽略）。
+12. **头部纹理**用 `--ter-panel-middle` 拉伸到 `100% 100%`，在 140px 与 52px 两种高度下
+    木纹比例不同；若要更稳可以改为固定高度的 `background-size: 100% 236px`。
 

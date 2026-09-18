@@ -70,7 +70,21 @@ export default function V2Layout() {
 
   const [assets, setAssets] = useState<AssetSettings>(() => loadAssetSettings())
   const [pickerOpen, setPickerOpen] = useState(false)
+  const [compact, setCompact] = useState(false)
   const location = useLocation()
+
+  // The full header is ~140px tall, which is a lot to keep pinned. Once the
+  // page scrolls it shrinks to just the nav bar.
+  useEffect(() => {
+    function onScroll() {
+      setCompact(window.scrollY > 48)
+    }
+
+    onScroll()
+    window.addEventListener('scroll', onScroll, { passive: true })
+
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
 
   const update = useCallback((next: AssetSettings) => {
     setAssets(next)
@@ -131,9 +145,9 @@ export default function V2Layout() {
         <div className="ter-bg" />
 
         <div className="ter-shell">
-          <header className="ter-header">
-            <div className="mx-auto flex max-w-[var(--ter-max-w)] flex-col items-center gap-2">
-              <NavLink to="/next" className="flex flex-col items-center no-underline">
+          <header className={cx('ter-header', compact && 'ter-header-compact')}>
+            <div className="ter-header-inner mx-auto flex max-w-[var(--ter-max-w)] flex-col items-center gap-2">
+              <NavLink to="/next" className="ter-brand flex flex-col items-center no-underline">
                 <img
                   className="ter-logo"
                   src={logoUrl}
@@ -200,7 +214,10 @@ export default function V2Layout() {
               </div>
             </div>
 
-            <Outlet />
+            {/* Keyed on the path so each route animates in on navigation. */}
+            <div key={location.pathname} className="ter-page-enter">
+              <Outlet />
+            </div>
           </main>
 
           <footer className="relative z-[1] border-t border-[rgb(201_162_39_/_25%)] bg-[rgb(0_0_0_/_45%)] px-4 py-4">

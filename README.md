@@ -116,6 +116,15 @@ pnpm build
 pnpm lint
 ```
 
+本仓库目前**没有自动化测试**：`package.json` 里没有 `test` 脚本，没有
+Playwright / Vitest 依赖，也没有任何测试文件或 CI workflow。因此
+提交信息或文档里出现的「N 项 Playwright 检查通过」这类数字**在仓库内无法复现**，
+既不能回归，也无法在 CI 里守住。
+
+如果需要回归保障，建议把那个 harness 一并提交（最小可跑的内容：
+6 个路由能渲染、`/next` 这类未知路径重定向回 Dashboard、`/api/meta` 握手成功、
+以及 `/api/v1/metrics` 的 null / 空 buffer / 能力缺失三条分支）。
+
 ## License
 
 This project is intended primarily for personal use.

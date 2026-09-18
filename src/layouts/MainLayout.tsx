@@ -7,7 +7,13 @@ import {
   Users,
   Settings,
   ShieldCheck,
+  Menu,
+  X,
 } from 'lucide-react'
+import {
+  useEffect,
+  useState,
+} from 'react'
 
 import {
   NavLink,
@@ -17,6 +23,27 @@ import ApiCompatibilityBanner from '../components/ApiCompatibilityBanner'
 
 
 export default function MainLayout() {
+  const [mobileNavOpen, setMobileNavOpen] =
+    useState(false)
+
+  useEffect(() => {
+    if (!mobileNavOpen) return
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setMobileNavOpen(false)
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown)
+    document.body.style.overflow = 'hidden'
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown)
+      document.body.style.overflow = ''
+    }
+  }, [mobileNavOpen])
+
   return (
     <div
       className={[
@@ -26,27 +53,39 @@ export default function MainLayout() {
       ].join(' ')}
     >
 
+      {mobileNavOpen && (
+        <button
+          type="button"
+          aria-label="Close navigation"
+          className="fixed inset-0 z-30 bg-black/60 backdrop-blur-[2px] md:hidden"
+          onClick={() => setMobileNavOpen(false)}
+        />
+      )}
+
       {/* Sidebar */}
       <aside
         className={[
-          'fixed bottom-0 left-0 right-0',
-          'z-20 h-16',
-          'border-t border-white/[0.07]',
+          'fixed inset-y-0 left-0',
+          'z-40 w-72',
+          'border-r border-white/[0.07]',
           'bg-[#151719]',
-          'md:inset-y-0 md:right-auto',
-          'md:h-auto md:w-64',
-          'md:border-r md:border-t-0',
+          'shadow-2xl shadow-black/40',
+          'transition-transform duration-200',
+          mobileNavOpen
+            ? 'translate-x-0'
+            : '-translate-x-full',
+          'md:w-64 md:translate-x-0',
+          'md:shadow-none',
         ].join(' ')}
       >
 
         {/* Logo */}
         <div
           className={[
-            'hidden h-16 items-center',
+            'flex h-16 items-center',
             'gap-3',
             'border-b border-white/[0.07]',
             'px-5',
-            'md:flex',
           ].join(' ')}
         >
 
@@ -93,11 +132,20 @@ export default function MainLayout() {
             </div>
           </div>
 
+          <button
+            type="button"
+            className="ui-icon-button ml-auto h-9 w-9 md:hidden"
+            aria-label="Close navigation"
+            onClick={() => setMobileNavOpen(false)}
+          >
+            <X size={18} />
+          </button>
+
         </div>
 
 
         {/* Navigation */}
-        <nav className="grid h-full grid-cols-6 px-1 md:block md:h-auto md:space-y-1.5 md:p-3">
+        <nav className="h-[calc(100vh-4rem)] space-y-1.5 overflow-y-auto p-3 pb-24">
 
           <NavItem
             to="/"
@@ -107,6 +155,7 @@ export default function MainLayout() {
               />
             }
             label="Dashboard"
+            onNavigate={() => setMobileNavOpen(false)}
           />
 
           <NavItem
@@ -115,6 +164,7 @@ export default function MainLayout() {
               <Globe size={18} />
             }
             label="Worlds"
+            onNavigate={() => setMobileNavOpen(false)}
           />
 
           <NavItem
@@ -123,6 +173,7 @@ export default function MainLayout() {
               <Users size={18} />
             }
             label="Players"
+            onNavigate={() => setMobileNavOpen(false)}
           />
 
           <NavItem
@@ -131,6 +182,7 @@ export default function MainLayout() {
               <Terminal size={18} />
             }
             label="Console"
+            onNavigate={() => setMobileNavOpen(false)}
           />
 
           <NavItem
@@ -139,6 +191,7 @@ export default function MainLayout() {
               <ShieldCheck size={18} />
             }
             label="Operations"
+            onNavigate={() => setMobileNavOpen(false)}
           />
 
           <NavItem
@@ -147,6 +200,7 @@ export default function MainLayout() {
               <Settings size={18} />
             }
             label="Settings"
+            onNavigate={() => setMobileNavOpen(false)}
           />
 
         </nav>
@@ -215,7 +269,7 @@ export default function MainLayout() {
 
 
       {/* Main */}
-      <main className="min-h-screen pb-16 md:ml-64 md:pb-0">
+      <main className="min-h-screen md:ml-64">
 
         {/* Header */}
         <header
@@ -230,7 +284,17 @@ export default function MainLayout() {
           ].join(' ')}
         >
 
-          <div>
+          <div className="flex min-w-0 items-center gap-3">
+            <button
+              type="button"
+              className="ui-icon-button h-9 w-9 shrink-0 md:hidden"
+              aria-label="Open navigation"
+              aria-expanded={mobileNavOpen}
+              onClick={() => setMobileNavOpen(true)}
+            >
+              <Menu size={18} />
+            </button>
+
             <h1
               className={[
                 'text-sm font-medium',
@@ -290,27 +354,27 @@ function NavItem({
   to,
   icon,
   label,
+  onNavigate,
 }: {
   to: string
   icon: React.ReactNode
   label: string
+  onNavigate: () => void
 }) {
   return (
     <NavLink
       to={to}
       end={to === '/'}
+      onClick={onNavigate}
       className={({ isActive }) =>
         [
           'group relative',
-          'flex h-full min-w-0 w-full',
-          'flex-col items-center justify-center gap-1',
+          'flex min-w-0 w-full',
+          'items-center justify-start gap-3',
           'rounded-[var(--ui-radius-control)]',
-          'px-1 py-1.5',
-          'text-[10px]',
+          'px-3 py-2.5',
+          'text-sm',
           'transition-all duration-150',
-          'md:h-auto md:flex-row md:justify-start',
-          'md:gap-3 md:px-3 md:py-2.5',
-          'md:text-sm',
 
           isActive
             ? [
@@ -331,13 +395,10 @@ function NavItem({
           {isActive && (
             <span
               className={[
-                'absolute bottom-0',
-                'h-0.5 w-5',
-                'rounded-t-full',
+                'absolute left-0',
+                'h-5 w-0.5',
+                'rounded-r-full',
                 'bg-emerald-400',
-                'md:bottom-auto md:left-0',
-                'md:h-5 md:w-0.5',
-                'md:rounded-r-full',
               ].join(' ')}
             />
           )}

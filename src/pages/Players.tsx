@@ -432,7 +432,7 @@ export default function Players() {
         </div>
 
 
-        {loading ? (
+        {loading && status === null ? (
 
           <div
             className={[
@@ -448,7 +448,7 @@ export default function Players() {
 
         ) : status?.players.length ? (
 
-          <div className="space-y-2">
+          <div className="ui-scroll-region space-y-2 pr-1">
 
             {status.players.map(
               (player) => {

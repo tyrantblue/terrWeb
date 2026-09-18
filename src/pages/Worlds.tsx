@@ -680,7 +680,7 @@ export default function Worlds() {
               </div>
 
 
-              <div className="grid gap-4 md:grid-cols-2">
+              <div className="ui-scroll-region grid gap-4 pr-1 md:grid-cols-2">
 
                 {otherWorlds.map(
                   (world) => (

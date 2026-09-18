@@ -354,7 +354,7 @@ function BackupsView({ backups, loading, action, onRestore }: { backups: Backup[
   if (loading && !backups.length) return <EmptyState text="Loading backups..." />
   if (!backups.length) return <EmptyState text="No backups available." />
 
-  return <div className="grid gap-3 lg:grid-cols-2">
+  return <div className="ui-scroll-region grid gap-3 pr-1 lg:grid-cols-2">
     {backups.map((backup) => (
       <div key={backup.name} className="ui-panel p-4">
         <div className="flex items-start justify-between gap-4">
@@ -378,7 +378,7 @@ function SchedulerView({ scheduler, loading, action, onRun }: { scheduler: Sched
 
   return <div className="space-y-4">
     <div className="flex items-center justify-between text-sm text-gray-500"><span>Timezone: {scheduler.timezone}</span><StatusBadge ok={scheduler.enabled} on="Enabled" off="Disabled" /></div>
-    <div className="grid gap-3 lg:grid-cols-3">
+    <div className="ui-scroll-region grid gap-3 pr-1 lg:grid-cols-3">
       {scheduler.jobs.map((job) => (
         <div key={job.name} className="ui-panel p-4">
           <div className="flex items-center justify-between gap-3"><h3 className="font-medium capitalize text-gray-200">{job.name}</h3><StatusBadge ok={job.enabled} on="Active" off="Off" /></div>
@@ -433,7 +433,7 @@ function GuardView({ guard, loading, action, onAction, onRemove }: { guard: Guar
 }
 
 function GuardList({ title, empty, entries, action, onRemove }: { title: string; empty: string; entries: Array<{ ip: string; detail: string }>; action: string; onRemove: (ip: string) => void }) {
-  return <section><h3 className="mb-2 text-sm font-medium text-gray-300">{title}</h3><div className="divide-y divide-white/[0.05] border-y border-white/[0.07]">
+  return <section><h3 className="mb-2 text-sm font-medium text-gray-300">{title}</h3><div className="ui-scroll-region divide-y divide-white/[0.05] border-y border-white/[0.07] pr-1">
     {entries.length ? entries.map((entry) => <div key={entry.ip} className="flex items-center justify-between gap-3 py-3"><div><div className="font-mono text-sm text-gray-300">{entry.ip}</div><div className="mt-0.5 text-xs text-gray-600">{entry.detail}</div></div><button type="button" onClick={() => onRemove(entry.ip)} disabled={Boolean(action)} className="ui-icon-button h-8 w-8" title={`Remove ${entry.ip}`}><Trash2 size={14} /></button></div>) : <div className="py-6 text-center text-sm text-gray-600">{empty}</div>}
   </div></section>
 }
@@ -443,7 +443,7 @@ function NotificationsView({ notifications, loading, testing, onTest }: { notifi
   if (!notifications) return <EmptyState text="Notification status is unavailable." />
   return <div className="space-y-5">
     <div className="ui-panel flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between"><div><div className="flex items-center gap-2"><StatusBadge ok={notifications.enabled} on="Enabled" off="Disabled" /><span className="text-sm text-gray-400">{notifications.format}</span></div><div className="mt-2 text-sm text-gray-600">{notifications.url ?? 'No webhook configured'}</div></div><button type="button" onClick={onTest} disabled={!notifications.enabled || testing} className="ui-button ui-button-accent"><Bell size={15} /> {testing ? 'Sending...' : 'Send test'}</button></div>
-    <section><h3 className="mb-2 text-sm font-medium text-gray-300">Recent deliveries</h3><div className="divide-y divide-white/[0.05] border-y border-white/[0.07]">
+    <section><h3 className="mb-2 text-sm font-medium text-gray-300">Recent deliveries</h3><div className="ui-scroll-region divide-y divide-white/[0.05] border-y border-white/[0.07] pr-1">
       {notifications.deliveries.length ? notifications.deliveries.map((delivery) => <div key={`${delivery.ts}-${delivery.event}`} className="flex items-start gap-3 py-3"><div className={delivery.ok ? 'mt-0.5 text-emerald-400' : 'mt-0.5 text-red-400'}>{delivery.ok ? <Check size={15} /> : <ShieldX size={15} />}</div><div className="min-w-0 flex-1"><div className="truncate text-sm text-gray-300">{delivery.title}</div><div className="mt-0.5 text-xs text-gray-600">{delivery.event} · {formatDate(delivery.ts)}{delivery.status ? ` · HTTP ${delivery.status}` : ''}</div>{delivery.error && <div className="mt-1 text-xs text-red-400">{delivery.error}</div>}</div></div>) : <div className="py-6 text-center text-sm text-gray-600">No deliveries recorded.</div>}
     </div></section>
   </div>

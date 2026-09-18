@@ -203,4 +203,11 @@
     letter-spacing: 0.04em;
     text-transform: uppercase;
   }
+
+  .ui-scroll-region {
+    max-height: min(32rem, 60vh);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+  }
 }

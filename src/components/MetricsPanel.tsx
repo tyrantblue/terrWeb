@@ -1,6 +1,8 @@
 import {
+  useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react'
 
@@ -13,6 +15,7 @@ import {
   Users,
 } from 'lucide-react'
 
+import { ApiError } from '../api/client'
 import {
   getMetrics,
   METRICS_WINDOWS,
@@ -57,12 +60,39 @@ export default function MetricsPanel() {
 
   const [reloadKey, setReloadKey] = useState(0)
 
+  /**
+   * Set when the route answers 404. The Dashboard gates this panel on the
+   * `/api/meta` capability, but that gate fails open when the handshake
+   * itself failed — in which case the capability is unknown, and a backend
+   * without `/api/v1/metrics` would otherwise be polled once a minute
+   * forever. A 404 is proof the route is missing, so stop the poll and let
+   * the user retry by hand.
+   */
+  const [unsupported, setUnsupported] = useState(false)
+
+  const unsupportedRef = useRef(false)
+
+  const retry = useCallback(() => {
+    // Clear a previous "this route does not exist" verdict so the poll can
+    // resume if the backend has since been upgraded.
+    unsupportedRef.current = false
+    setUnsupported(false)
+    setRefreshing(true)
+    setReloadKey((key) => key + 1)
+  }, [])
+
   const { status } = useServerStatus()
 
   useEffect(() => {
     const controller = new AbortController()
 
-    async function fetchOnce() {
+    /**
+     * `manual` marks the fetch that a Refresh click (or a window change)
+     * triggered. Only that one may clear the spinner: a background poll
+     * finishing first must not make the button look idle while the user's
+     * own request is still in flight.
+     */
+    async function fetchOnce(manual: boolean) {
       try {
         const next = await getMetrics(
           windowMinutes,
@@ -73,6 +103,13 @@ export default function MetricsPanel() {
           return
         }
 
+        // A later success (backend upgraded, or a manual retry) clears a
+        // previous 404 verdict so the poll resumes.
+        if (unsupportedRef.current) {
+          unsupportedRef.current = false
+          setUnsupported(false)
+        }
+
         setState({
           window: windowMinutes,
           data: next,
@@ -81,6 +118,13 @@ export default function MetricsPanel() {
       } catch (caught) {
         if (controller.signal.aborted) {
           return
+        }
+
+        // A missing route is not a transient failure: remember it so the
+        // poll stops instead of hammering a backend that has no metrics.
+        if (caught instanceof ApiError && caught.status === 404) {
+          unsupportedRef.current = true
+          setUnsupported(true)
         }
 
         setState((previous) => ({
@@ -98,25 +142,31 @@ export default function MetricsPanel() {
               : 'Failed to load metrics',
         }))
       } finally {
-        if (!controller.signal.aborted) {
+        if (manual && !controller.signal.aborted) {
           setRefreshing(false)
         }
       }
     }
 
-    void fetchOnce()
+    void fetchOnce(reloadKey > 0)
 
     const timer = window.setInterval(() => {
       // Same rule as the status poller: no background traffic while the
       // tab is hidden, and an immediate refresh when it comes back.
-      if (document.visibilityState === 'visible') {
-        void fetchOnce()
+      if (
+        !unsupportedRef.current &&
+        document.visibilityState === 'visible'
+      ) {
+        void fetchOnce(false)
       }
     }, POLL_INTERVAL_MS)
 
     function handleVisibilityChange() {
-      if (document.visibilityState === 'visible') {
-        void fetchOnce()
+      if (
+        !unsupportedRef.current &&
+        document.visibilityState === 'visible'
+      ) {
+        void fetchOnce(false)
       }
     }
 
@@ -259,19 +309,18 @@ export default function MetricsPanel() {
 
           <button
             type="button"
-            onClick={() => {
-              setRefreshing(true)
-              setReloadKey((key) => key + 1)
-            }}
+            onClick={retry}
             disabled={loading || refreshing}
             className="ui-icon-button"
             title="Refresh metrics"
+            aria-label="Refresh metrics"
           >
             <RefreshCw
               size={15}
+              aria-hidden="true"
               className={
                 loading || refreshing
-                  ? 'animate-spin'
+                  ? 'motion-safe:animate-spin'
                   : ''
               }
             />
@@ -285,7 +334,45 @@ export default function MetricsPanel() {
       {/* Body */}
       {/* A failed refresh keeps the previous series on screen; the banner
           says the numbers are stale instead of hiding them. */}
-      {error !== null && (
+      {/* A missing route is not a fault to alarm about: the Dashboard's
+          capability gate fails open when the /api/meta handshake itself
+          failed, so this is what an API 1.x backend looks like. */}
+      {unsupported && (
+        <div
+          className={[
+            'rounded-lg border border-dashed',
+            'border-white/[0.07] bg-white/[0.012]',
+            'px-4 py-8 text-center',
+          ].join(' ')}
+        >
+          <div className="text-sm text-gray-400">
+            This API has no metrics endpoint
+          </div>
+
+          <div className="mx-auto mt-1.5 max-w-lg text-[11px] leading-5 text-gray-500">
+            <span className="font-mono">GET /api/v1/metrics</span>{' '}
+            answered 404, so the panel stopped polling it. The backend
+            needs the{' '}
+            <span className="font-mono">server.metrics</span>{' '}
+            capability (API 2.0.0+).
+          </div>
+
+          <button
+            type="button"
+            onClick={retry}
+            disabled={refreshing}
+            className={[
+              'ui-button',
+              'ui-button-secondary',
+              'mt-4',
+            ].join(' ')}
+          >
+            Check again
+          </button>
+        </div>
+      )}
+
+      {error !== null && !unsupported && (
         <div
           role="alert"
           className={[
@@ -313,10 +400,7 @@ export default function MetricsPanel() {
 
           <button
             type="button"
-            onClick={() => {
-              setRefreshing(true)
-              setReloadKey((key) => key + 1)
-            }}
+            onClick={retry}
             disabled={refreshing}
             className={[
               'ui-button',
@@ -357,18 +441,19 @@ export default function MetricsPanel() {
             'text-center',
           ].join(' ')}
         >
-          <div className="text-sm text-gray-500">
-            No samples in this window yet
+          {/* "Sampling is switched off" is permanent and a different
+              problem from "the buffer is empty right now", so they must
+              not share one headline. */}
+          <div className="text-sm text-gray-400">
+            {current.interval_seconds <= 0
+              ? describeSampling(current)
+              : 'No samples in this window yet'}
           </div>
 
-          <div className="mx-auto mt-1.5 max-w-lg text-[11px] text-gray-700">
-            The API keeps samples in memory only, so this is also what a
-            recent API restart looks like. If the backend sets
-            {' '}
-            <span className="font-mono">
-              METRICS_INTERVAL_SECONDS=0
-            </span>
-            , sampling is disabled entirely.
+          <div className="mx-auto mt-1.5 max-w-lg text-[11px] text-gray-500">
+            {current.interval_seconds <= 0
+              ? 'Nothing will appear here until the backend sets a non-zero METRICS_INTERVAL_SECONDS and restarts.'
+              : 'The API keeps samples in memory only, so this is also what a recent API restart looks like.'}
           </div>
         </div>
 
@@ -645,7 +730,7 @@ function DiskBar({
           <div
             className={[
               'h-full rounded-full',
-              'transition-all duration-300',
+              'motion-safe:transition-all motion-safe:duration-300',
               tone,
             ].join(' ')}
             style={{ width: `${usedPercent}%` }}

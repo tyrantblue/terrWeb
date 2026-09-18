@@ -73,8 +73,10 @@ export default function TrendChart({
 
     const first = Math.min(...timestamps)
     const last = Math.max(...timestamps)
-    // A single sample has no span; widen it so the point lands mid-plot
-    // instead of dividing by zero.
+    // A single sample has no span of its own. Widen it by a second so the
+    // division below is safe and the sample lands at the left edge (x = 0)
+    // rather than at NaN; the short dash added further down is what makes
+    // that lone point visible.
     const min = first
     const max = last > first ? last : first + 1
     const span = max - min
@@ -225,7 +227,10 @@ export default function TrendChart({
 
   const spanHours = (max - min) / 3600
 
-  const timeOptions = spanHours > 24
+  // The widest window the backend accepts is 1440 minutes, so the largest
+  // span is 1439 minutes ≈ 23.98h — a `> 24` test could never fire and the
+  // day-qualified labels were dead code. Switch on "most of a day" instead.
+  const timeOptions = spanHours > 23
     ? AXIS_DAY_TIME_OPTIONS
     : AXIS_TIME_OPTIONS
 
@@ -301,7 +306,9 @@ export default function TrendChart({
             'flex-col justify-between',
             'py-0.5 text-right',
             'text-[10px] leading-none',
-            'text-gray-700',
+            // Measured against the panel (#17191c): gray-700 is 1.71:1, and
+            // axis numbers are what makes the chart readable at all.
+            'text-gray-400',
           ].join(' ')}
           style={{ height }}
         >
@@ -462,7 +469,8 @@ export default function TrendChart({
         className={[
           'mt-1 flex justify-between',
           'pl-12 text-[10px]',
-          'text-gray-700',
+          // Same reason as the y axis: gray-700 on the panel is 1.71:1.
+          'text-gray-400',
         ].join(' ')}
       >
         <span>{formatTime(min)}</span>
@@ -499,7 +507,9 @@ function EmptyChart({
         'border border-dashed border-white/[0.07]',
         'bg-white/[0.012]',
         'px-4 text-center',
-        'text-[11px] text-gray-600',
+        // This is the only content of an empty chart, so it has to be
+        // readable: gray-600 on the panel measures 2.33:1.
+        'text-[11px] text-gray-400',
       ].join(' ')}
       style={{ height }}
     >

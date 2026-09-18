@@ -31,6 +31,7 @@ import {
 } from '../api/world'
 
 import ConfirmDialog from '../components/ConfirmDialog'
+import WorldMetadataLine from '../components/WorldMetadataLine'
 import { CAPABILITIES, useApiMeta } from '../context/apiMeta'
 import { useOperations } from '../context/operations'
 import { useAbortOnUnmount } from '../hooks/useAbortOnUnmount'
@@ -77,6 +78,14 @@ export default function Worlds() {
 
   const canUpload = hasCapability(
     CAPABILITIES.worldUpload,
+  )
+
+  // API 1.x does not parse `.wld` headers. The check fails open until the
+  // handshake lands, so a world whose payload simply has no `metadata`
+  // field renders nothing (see WorldMetadataLine) rather than claiming the
+  // file is unreadable: only an explicit `null` means "unknown".
+  const canShowMetadata = hasCapability(
+    CAPABILITIES.worldMetadata,
   )
 
   const { activeExclusive } = useOperations()
@@ -660,6 +669,7 @@ export default function Worlds() {
                 switchProgress={switchProgress}
                 action={worldAction}
                 switchingBlocked={activeExclusive !== null}
+                showMetadata={canShowMetadata}
                 onSwitch={handleSwitchRequest}
                 onBackup={handleBackup}
                 onDelete={setDeleteTarget}
@@ -709,6 +719,7 @@ export default function Worlds() {
                       switchProgress={switchProgress}
                       action={worldAction}
                       switchingBlocked={activeExclusive !== null}
+                      showMetadata={canShowMetadata}
                       onSwitch={handleSwitchRequest}
                       onBackup={handleBackup}
                       onDelete={setDeleteTarget}
@@ -740,7 +751,39 @@ export default function Worlds() {
         cancelText="Cancel"
         onConfirm={handleConfirmSwitch}
         loading={switching !== null}
-      />
+      >
+        {confirmWorld &&
+          canShowMetadata &&
+          confirmWorld.metadata !== undefined && (
+          <div
+            className={[
+              'mt-4 rounded-lg',
+              'border border-white/[0.07]',
+              'bg-white/[0.02]',
+              'px-3.5 py-3',
+            ].join(' ')}
+          >
+            <div
+              className={[
+                'text-[11px]',
+                'uppercase tracking-wide',
+                'text-gray-700',
+              ].join(' ')}
+            >
+              Target world
+            </div>
+
+            <div className="mt-1.5 text-sm text-gray-400">
+              {confirmWorld.name}
+            </div>
+
+            <WorldMetadataLine
+              metadata={confirmWorld.metadata}
+              className="mt-1.5"
+            />
+          </div>
+        )}
+      </ConfirmDialog>
 
       <ConfirmDialog
         open={deleteTarget !== null}
@@ -1027,6 +1070,7 @@ function WorldCard({
   switchProgress,
   action,
   switchingBlocked,
+  showMetadata,
   onSwitch,
   onBackup,
   onDelete,
@@ -1037,6 +1081,8 @@ function WorldCard({
   action: string | null
   /** An exclusive operation is in flight, so activating would 409. */
   switchingBlocked: boolean
+  /** The backend advertises `world.metadata` (API 2.0.0+). */
+  showMetadata: boolean
   onSwitch: (
     world: World,
   ) => void
@@ -1146,6 +1192,13 @@ function WorldCard({
             >
               {world.file}
             </p>
+
+            {showMetadata && (
+              <WorldMetadataLine
+                metadata={world.metadata}
+                className="mt-1.5"
+              />
+            )}
 
           </div>
 

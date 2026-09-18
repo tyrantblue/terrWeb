@@ -22,11 +22,13 @@ import {
   type ServerTime,
 } from '../api/server'
 import { runOperation } from '../api/world'
+import { useApiMeta, CAPABILITIES } from '../context/apiMeta'
 import { useConsoleHeartbeat } from '../context/consoleHeartbeat'
 import { useOperations } from '../context/operations'
 import { useAbortOnUnmount } from '../hooks/useAbortOnUnmount'
 import { formatErrorReport } from '../api/errors'
 import ConfirmDialog from '../components/ConfirmDialog'
+import MetricsPanel from '../components/MetricsPanel'
 import {
   useServerStatus,
   type Connectivity,
@@ -40,6 +42,19 @@ export default function Dashboard() {
   const heartbeat = useConsoleHeartbeat()
 
   const { activeExclusive } = useOperations()
+
+  const { hasCapability, loading: metaLoading } = useApiMeta()
+
+  // API 1.x has no /api/v1/metrics; the section is only drawn when the
+  // backend advertises it, so an old deployment never sees a failed
+  // request. Waiting for the handshake matters here because
+  // `hasCapability` deliberately fails open while it is in flight —
+  // mounting the panel then would fire one doomed request (and could flash
+  // its error state) at a backend that has no such route. A *failed*
+  // handshake still fails open: the panel renders and degrades on its own.
+  const canShowMetrics =
+    !metaLoading &&
+    hasCapability(CAPABILITIES.serverMetrics)
 
   const operationAbort = useAbortOnUnmount()
 
@@ -530,6 +545,10 @@ export default function Dashboard() {
         </Panel>
 
       </div>
+
+
+      {/* Resource and player-count trends (API 2.0.0+, server.metrics) */}
+      {canShowMetrics && <MetricsPanel />}
 
 
       {/* Server controls */}

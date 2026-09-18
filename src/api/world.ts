@@ -5,12 +5,54 @@ import {
   apiFetch,
 } from './client'
 
+/**
+ * Official Terraria world tiers. `small`/`medium`/`large` are the three
+ * shipped dimensions; the backend classifies non-official sizes by width,
+ * so this field never carries an unknown value.
+ */
+export type WorldSizeTier =
+  | 'small'
+  | 'medium'
+  | 'large'
+
+/**
+ * The difficulties the backend knows about. The field itself can still
+ * carry an unknown value (`unknown(7)`) when a newer Terraria version adds
+ * a mode, so read it as a string and map the known ones for display.
+ */
+export type WorldDifficulty =
+  | 'classic'
+  | 'expert'
+  | 'master'
+  | 'journey'
+
+/**
+ * The `.wld` header the API parses (API 2.0.0+, capability
+ * `world.metadata`). The whole object is `null` for old (pre-1.3.5.3),
+ * damaged or truncated files — the list endpoint still answers 200, and
+ * the panel renders those as "unknown".
+ */
+export interface WorldMetadata {
+  format_version: number
+  size_tier: WorldSizeTier
+  width: number
+  height: number
+  difficulty: WorldDifficulty | (string & {})
+  /** ISO-8601 UTC, or `null` when the header has no creation time. */
+  created_at: string | null
+}
+
 export interface World {
   name: string
   file: string
   size: number
   modified_at: number
   active: boolean
+  /**
+   * Absent on API 1.x, `null` for unreadable files. Read it defensively
+   * (`world.metadata?.`) even when the capability is advertised.
+   */
+  metadata?: WorldMetadata | null
 }
 
 export interface WorldListResponse {

@@ -1,5 +1,5 @@
 import { apiFetch } from './client'
-import type { OperationStart } from './world'
+import type { OperationStart, WorldMetadata } from './world'
 
 
 export interface ServerPlayers {
@@ -22,6 +22,8 @@ export interface ServerWorld {
   size: number
   modified_at: number
   active: boolean
+  /** API 2.0.0+, capability `world.metadata`; `null` for unreadable files. */
+  metadata?: WorldMetadata | null
 }
 
 export interface ServerStatus {

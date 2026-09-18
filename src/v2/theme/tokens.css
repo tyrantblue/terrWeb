@@ -1,0 +1,65 @@
+/**
+ * Design tokens for the Terraria-style UI (v2).
+ *
+ * Values are measured from terraria.org's computed styles, not guessed:
+ *   page base   #0a0a0a
+ *   headings    rgb(214, 255, 228)  (#d6ffe4)  Open Sans 26/18px w500
+ *   body        rgb(246, 255, 227)  (#f6ffe3)  Open Sans 17px, line-height 1.2
+ *
+ * Everything is scoped to `.ter-theme` so the existing UI is untouched.
+ */
+
+.ter-theme {
+  /* ---- surfaces -------------------------------------------------- */
+  --ter-page: #0a0a0a;
+
+  /* Leather panel ramp, sampled from the site's news_block.jpg /
+     info_panel.jpg relationship (warm brown, lighter top edge). */
+  --ter-panel: #6b4a35;
+  --ter-panel-hi: #8a6a4f;
+  --ter-panel-lo: #4a3325;
+  --ter-panel-deep: #33231a;
+
+  /* The two rules every official panel has: a 1px light inner line and
+     a warmer outer outline. */
+  --ter-inset: rgb(216 195 159 / 28%);
+  --ter-outline: #c9a227;
+
+  /* ---- signature accents ----------------------------------------- */
+  /* The mossy band lives in textures.css as an SVG data URI, where the
+     colours have to be literal (var() cannot reach inside `url()`), so
+     there is deliberately no `--ter-moss*` token to keep in sync. */
+
+  --ter-gold: #f0c860;
+
+  /* ---- type ------------------------------------------------------ */
+  --ter-heading: #d6ffe4;
+  --ter-body: #f6ffe3;
+  /* Secondary/tertiary text is measured against `--ter-panel` (#6b4a35),
+     not just the page: the earlier #b8a98c / #8a7a5f pair scored 3.42:1
+     and 1.89:1 there, i.e. unreadable. These two clear AA body text
+     (5.54:1 and 4.77:1) while keeping body > muted > faint. */
+  --ter-muted: #e2d7c0;
+  --ter-faint: #d3c8b0;
+
+  /* ---- semantic (kept legible on brown: green/amber/red still read) */
+  --ter-ok: #8bc34a;
+  --ter-warn: #f0a848;
+  --ter-danger: #e06c5a;
+  --ter-info: #7fc8dc;
+
+  /* ---- shape ----------------------------------------------------- */
+  /* Terraria's chrome is pixel art: square-ish, never pill-shaped. */
+  --ter-radius: 2px;
+
+  /* ---- fonts ----------------------------------------------------- */
+  /* "严格按照官网": the site itself renders in Open Sans (headings w500,
+     body 17px) with Merriweather for editorial accents. No pixel font. */
+  --ter-font-body: "Open Sans", ui-sans-serif, system-ui, sans-serif;
+  --ter-font-display: "Open Sans", ui-sans-serif, system-ui, sans-serif;
+  --ter-font-serif: "Merriweather", Georgia, serif;
+
+  /* ---- layout ---------------------------------------------------- */
+  --ter-nav-h: 56px;
+  --ter-max-w: 1200px;
+}

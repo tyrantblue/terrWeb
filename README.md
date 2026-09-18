@@ -81,6 +81,21 @@ export const API_BASE_URL = 'https://terraria-api.tyrantblue.xyz'
 | Operations | 长任务历史、备份恢复、定时任务、连接守卫和通知 |
 | Settings | 持久化服务器配置 |
 
+### UI v2 预览（`/next/*`）
+
+`src/v2/` 是一套模仿 terraria.org 视觉语言的新皮肤，与上面这套 Classic UI **并存**，
+复用同一批 provider 与 API 模块，只换"皮"。入口：
+
+| 路由 | 内容 |
+| --- | --- |
+| `/next` | 用 v2 皮肤渲染的 Dashboard（实时数据） |
+| `/next/kit` | 组件总览，用于挑样/验收 |
+| `/next/{worlds,players,console,operations,settings}` | 占位页，逐步迁移 |
+
+右上角「眼睛」按钮可切换美术来源（默认自绘，不加载任何外部资源）。
+设计说明、决策记录与分阶段计划见 `docs/ui-v2-plan.md`；Classic UI 仍是默认入口，
+`/next` 目前是预览，未列入导航。
+
 ## 部署
 
 项目包含 Cloudflare Wrangler 配置。部署命令会先执行生产构建：

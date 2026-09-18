@@ -1,0 +1,109 @@
+/**
+ * Programmatic textures.
+ *
+ * The official site gets its look from JPEG/PNG textures (news_block.jpg,
+ * middle.jpg, ...). Those are Re-Logic's copyrighted art and must not be
+ * redistributed, so every texture here is generated from SVG filters and
+ * gradients instead — same visual weight, no borrowed assets.
+ *
+ * Layer order in every `background-image` list is deliberate:
+ *   grain on top, then a soft vertical light ramp, then the base colour.
+ */
+
+.ter-theme {
+  /* Fractal-noise grain. Desaturated and kept faint so it reads as leather
+     rather than television static. */
+  --ter-tex-grain:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23g)' opacity='0.42'/%3E%3C/svg%3E");
+
+  /* Coarser noise for wood. */
+  --ter-tex-grain-coarse:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='40'%3E%3Cfilter id='w'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.02 0.6' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='200' height='40' filter='url(%23w)' opacity='0.3'/%3E%3C/svg%3E");
+
+  /* Pixel grass strip — the signature mossy edge on official panels.
+     Two layers: dark silhouette behind, bright blades in front. */
+  /* Pixel grass strip — the signature mossy edge on official panels.
+     Drawn at exactly the display size (16x8, 1:1) so the blades stay
+     crisp instead of being cropped to the solid base. */
+  --ter-tex-moss:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='8' shape-rendering='crispEdges'%3E%3Cpath d='M0 8V5h16v3z' fill='%232f5228'/%3E%3Cpath d='M0 5V3h1V1h1v2h1V3h1V0h1v5h1V2h1v3h1V1h1v4h1V3h1V2h1v3h1V1h1v2h1V3h1v2z' fill='%233f6b32'/%3E%3Cpath d='M0 5V4h2V2h1v3zM5 5V1h1v4zM8 5V3h1V2h1v3zM12 5V2h1v3zM15 5V3h1v2z' fill='%234a7c3f'/%3E%3Cpath d='M5 5V2h1v3zM8 5V3h1v2z' fill='%237cb342'/%3E%3C/svg%3E");
+
+  /* Rope/knot end-cap ornament for the nav plank, echoing the ⊗ shapes
+     flanking the official navigation bar. */
+  --ter-tex-knot:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 28 28'%3E%3Ccircle cx='14' cy='14' r='11' fill='none' stroke='%23c9a227' stroke-width='2.5'/%3E%3Ccircle cx='14' cy='14' r='5' fill='%234a3325' stroke='%238a6a4f' stroke-width='2'/%3E%3Cpath d='M3 14h6M19 14h6M14 3v6M14 19v6' stroke='%23c9a227' stroke-width='2.5' stroke-linecap='round'/%3E%3C/svg%3E");
+}
+
+/* Panel surface: grain + light ramp over the brown base. */
+.ter-theme .ter-surface {
+  background-color: var(--ter-panel);
+  background-image:
+    var(--ter-tex-grain),
+    linear-gradient(
+      180deg,
+      rgb(255 255 255 / 7%) 0%,
+      rgb(255 255 255 / 2%) 18%,
+      rgb(0 0 0 / 0%) 55%,
+      rgb(0 0 0 / 22%) 100%
+    );
+  background-blend-mode: overlay, normal;
+}
+
+.ter-theme .ter-surface-deep {
+  background-color: var(--ter-panel-deep);
+  background-image:
+    var(--ter-tex-grain),
+    linear-gradient(
+      180deg,
+      rgb(0 0 0 / 30%) 0%,
+      rgb(0 0 0 / 8%) 45%,
+      rgb(255 255 255 / 3%) 100%
+    );
+  background-blend-mode: overlay, normal;
+}
+
+.ter-theme .ter-surface-wood {
+  background-color: var(--ter-panel-lo);
+  background-image:
+    var(--ter-tex-grain-coarse),
+    linear-gradient(
+      180deg,
+      var(--ter-panel-hi) 0%,
+      var(--ter-panel) 45%,
+      var(--ter-panel-lo) 100%
+    );
+  background-blend-mode: overlay, normal;
+}
+
+/* The mossy band. Applied as a pseudo-element so it can overhang the
+   panel edge the way the official art does. */
+.ter-theme .ter-moss-top::before,
+.ter-theme .ter-moss-bottom::after {
+  content: "";
+  position: absolute;
+  left: -1px;
+  right: -1px;
+  height: 8px;
+  background-image: var(--ter-tex-moss);
+  background-repeat: repeat-x;
+  background-size: 16px 8px;
+  background-position: bottom;
+  image-rendering: pixelated;
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* A small overhang keeps the pixel-grass charm; keeping it to 3px means
+   nested panels never collide with the element above them. */
+.ter-theme .ter-moss-top {
+  margin-top: 3px;
+}
+
+.ter-theme .ter-moss-top::before {
+  top: -3px;
+}
+
+.ter-theme .ter-moss-bottom::after {
+  bottom: -3px;
+  transform: scaleY(-1);
+}

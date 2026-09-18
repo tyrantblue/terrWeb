@@ -24,27 +24,27 @@
   inset: 0;
   z-index: 0;
   background-color: var(--ter-page);
-  background-image: var(--ter-bg-image, none);
+  background-image: var(--ter-background, none);
   background-size: cover;
   background-position: 50% 0%;
   background-repeat: no-repeat;
   pointer-events: none;
 }
 
-/* Legibility scrim. The artwork's top is a bright sky with a near-white sun
-   sitting right behind the content column, so the scrim has to be strong
-   enough there to carry small text: at 14% the measured contrast was
-   1.05:1, and ~62% is the minimum that reaches AA over the brightest spot.
-   The lower stops are heavier so panels and the footer stay comfortable. */
+/* Legibility scrim. The official backdrop is bright exactly where the
+   content starts: measured over its top 28%, mean luminance is 0.58 and the
+   99th percentile is 1.0, so unscrimmed text scores only 1.1–1.6:1. At 64%
+   the small faint text still reached just 4.06:1, hence 70% at the top; the
+   lower stops are heavier still so panels stay comfortable. */
 .ter-theme .ter-bg::after {
   content: "";
   position: absolute;
   inset: 0;
   background: linear-gradient(
     180deg,
-    rgb(10 10 10 / 64%) 0%,
-    rgb(10 10 10 / 70%) 45%,
-    rgb(10 10 10 / 80%) 100%
+    rgb(10 10 10 / 70%) 0%,
+    rgb(10 10 10 / 74%) 45%,
+    rgb(10 10 10 / 82%) 100%
   );
 }
 

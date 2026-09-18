@@ -56,7 +56,7 @@ function App() {
                     element={
                       <V2Placeholder
                         title="Worlds"
-                        icon="world"
+                        icon="worlds"
                         source="/worlds"
                       />
                     }
@@ -89,7 +89,7 @@ function App() {
                     element={
                       <V2Placeholder
                         title="Operations"
-                        icon="shield"
+                        icon="operations"
                         source="/operations"
                       />
                     }
@@ -100,7 +100,7 @@ function App() {
                     element={
                       <V2Placeholder
                         title="Settings"
-                        icon="gear"
+                        icon="settings"
                         source="/settings"
                       />
                     }

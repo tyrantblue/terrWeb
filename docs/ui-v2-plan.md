@@ -12,11 +12,11 @@
 | 内容 | 位置 |
 | --- | --- |
 | 设计令牌（实测自官网） | `src/v2/theme/tokens.css` |
-| 程序化纹理（皮革/木纹/像素草带/绳结） | `src/v2/theme/textures.css` |
+| chrome 图引用（面板三段/草带/木牌/导航/分隔线，全部运行时拉取） | `src/v2/theme/textures.css` |
 | 页面底 + 排版 + 滚动条 + 焦点 | `src/v2/theme/base.css` |
 | 组件 chrome（面板/木牌按钮/徽章/输入/导航板/对话框…） | `src/v2/theme/components.css` |
-| 美术来源切换（自绘 / 官网运行时 / 自定义） | `src/v2/theme/assets.ts` |
-| 23 个自绘 12×12 像素图标 | `src/v2/ui/TerIcon.tsx` |
+| 美术来源注册表（官网 chrome / pixelarticons / 自定义镜像） | `src/v2/theme/assets.ts` |
+| 图标：引用远端 SVG，用 CSS mask 染色 | `src/v2/ui/TerIcon.tsx` |
 | 组件套件 | `src/v2/ui/index.tsx` |
 | v2 外壳（wordmark + 木质导航板 + 页脚） | `src/v2/layouts/V2Layout.tsx` |
 | 实时数据 Dashboard（复用现有 provider） | `src/v2/pages/V2Dashboard.tsx` |
@@ -39,8 +39,8 @@
 
 1. 入口用 `/next` 路由前缀（一份产物，`wrangler.json` 不动）
 2. 严格照官网字体：Open Sans（标题 w500 / 正文），无像素字体
-3. 美术来源：**默认自绘**，可切换到官网资源（运行时加载，不入库）或自定义 URL
-4. 图标：自绘 12×12 像素 sprite（23 个），官网 PNG 仅在存在映射时替换
+3. 美术来源：**全部运行时引用** —— 面板/背景/logo 走官网，图标走 pixelarticons；两者都可换成自定义镜像
+4. 图标：引用 pixelarticons（MIT），CSS mask 染色；**不再自绘**
 5. 全站统一一张背景，不做按页面换群系
 
 ---
@@ -93,25 +93,24 @@
 
 ---
 
-## 2. 版权红线（必须先说）
+## 2. 美术策略：全部引用，不自绘
 
-**不能把 Re-Logic 的任何图片/字体打进仓库**：logo、`Background/*`、
-`middle.jpg` 这类面板纹理、`buy_icons.gif`、Andy Bold 修改版，全部是受版权保护的美术资源。
+**当前策略（已按反馈调整）**：不再自绘任何像素，所有美术都在**运行时引用**；
+仓库里不存放、不打包任何图片。
 
-所以 v2 的做法是**用原创资源复刻"风格"，而不是搬运"素材"**：
-
-| 需要的东西 | 方案 | 授权 |
+| 用途 | 来源 | 授权/说明 |
 | --- | --- | --- |
-| 皮革/羊皮纸/苔藓纹理 | SVG `feTurbulence` 程序化生成 + 多层 `linear-gradient` | 自产 |
-| 9 宫格边框、像素 bevel | 自绘 SVG 9-slice + `box-shadow` 阶梯 | 自产 |
-| 像素图标 | 自绘 16×16 SVG sprite sheet | 自产 |
-| 生物群系背景 | 自绘分层 SVG 场景（视差），或允许用户放自己的图 | 自产 |
-| 像素字体 | **OFL 字体**：Silkscreen / Pixelify Sans / VT323 | OFL，可商用 |
-| 正文字体 | 保持 Open Sans（或系统 UI 字体） | OFL/Apache |
-| Logo | 自绘 wordmark（"Terraria Panel"），**不用**官方 logo | 自产 |
+| 背景 / 面板三件套 / 像素草带 / 标题木牌 / 导航按钮 / logo | **terraria.org** `/static/media/*` | Re-Logic 官方美术，浏览器直接拉取，仓库不分发 |
+| 图标（27 个） | **pixelarticons** via jsDelivr | MIT，`fill="currentColor"` → 用 CSS mask 染成主题金色 |
+| 字体 | Google Fonts：Open Sans / Merriweather | OFL，与官网一致 |
+| 面板分割线 | terraria.org `dividerfancy.png` | 官方 |
 
-> 如果想省事，图标也可以走 [game-icons.net](https://game-icons.net/)（CC BY 3.0，需署名）。
-> 但自绘 sprite 在风格一致性上更好，且没有署名负担。
+**已知风险**：官网文件名带内容哈希（`fade_in.84ea52c8.jpg`），
+Re-Logic 每次重新部署都会失效。所以 `chromeBase` 可配置，
+指到本地镜像即可摆脱依赖（设置里可改）。
+
+**早期版本曾用 SVG `feTurbulence` 自绘纹理 + 自绘 12×12 像素图标，
+已全部删除。**
 
 ---
 
@@ -148,11 +147,11 @@ src/
   v2/
     theme/
       tokens.css       # 作用域在 .ter-theme 下的设计令牌
-      textures.css     # 程序化纹理（皮革/苔藓/石）
+      textures.css     # chrome 图引用（面板三段/草带/木牌/导航/分隔线）
       base.css         # 页面底（背景层、排版、滚动条、焦点、动效降级）
       components.css   # 组件 chrome（面板/按钮/徽章/输入/导航板/对话框）
-      assets.ts        # 美术来源与自绘背景
-      assetContext.ts  # 把图标来源下发给 TerIcon
+      assets.ts        # 美术来源注册表（官网 chrome / pixelarticons / 自定义）
+      assetContext.ts  # 把美术来源下发给 TerIcon
       index.css        # 依次 import 上面四个 css
     ui/                # 组件套件（TerPanel/TerButton/TerBadge/...）+ TerIcon
     layouts/V2Layout.tsx
@@ -165,6 +164,10 @@ src/
 ---
 
 ## 4. 设计令牌（草案）
+
+> **本节是 P0 的初稿，已被 §2 的现行策略取代。** 实际令牌见 `src/v2/theme/tokens.css`：
+> 没有像素字体（决策 2），面板不再自绘纹理，令牌只覆盖页面底/滚动条/文字/语义色/圆角/字体。
+> 下面保留仅为记录当初的配色推导。
 
 作用域隔离在 `.ter-theme` 下，绝不泄漏到旧 UI。
 
@@ -211,62 +214,65 @@ src/
 
 ## 5. 组件清单
 
-v2 需要重做的（按现有 `ui-*` 对照）：
+v2 的组件（按现有 `ui-*` 对照）。**美术来源已按 §2 改为运行时引用**，
+所以"处理"一列现在指的是引用哪张官方图，而不是自绘什么：
 
-| 现有 | v2 组件 | 泰拉化处理 |
+| 现有 | v2 组件 | 实现 |
 | --- | --- | --- |
-| `.ui-panel` | `TerPanel` | 皮革纹理 + 内描边 + **苔藓草带**（可选 top/bottom） |
-| `.ui-panel-subtle` | `TerPanel variant="inset"` | 内凹，used for 状态条 |
-| `.ui-button` | `TerButton` | 木牌按钮，hover 提亮 + 1px 上移，active 下沉（像素 press） |
-| `.ui-button-accent` | `TerButton tone="gold"` | 金色描边 |
-| `.ui-icon-button` | `TerIconButton` | 像素方形钮 |
-| `.ui-input` | `TerInput` | 内凹 + 深色底 + 像素内描边 |
-| `.ui-status` | `TerBadge` | 小木牌标签，成功/警告/危险/中性 |
-| `.ui-page-title` | `TerTitle` | 木牌标题 + 两侧花饰分隔 |
-| （无） | `TerDivider` | 自绘花饰分隔线（替代 dividerfancy.png） |
-| `.ui-dialog` | `TerDialog` | 面板 + 苔藓带 + 木质按钮 |
+| `.ui-panel` | `TerPanel` | `fade_in` + `middle`(平铺) + `fade_out_dark` 三段 + 像素草带 |
+| `.ui-panel-subtle` | `TerPanel inset` | 半透明深色内凹（状态条、空状态） |
+| `.ui-button` | `TerButton` | 官方 `title.jpg` 木牌，hover 提亮 / active 下沉 |
+| `.ui-button-accent` | `TerButton variant="gold"` | 同一张图，`filter: saturate + brightness` |
+| `.ui-icon-button` | `TerIconButton` | 同一张木牌，正方形 |
+| `.ui-input` | `TerInput` | 深色内凹 + `--ter-outline` 边框 |
+| `.ui-status` | `TerBadge` | 半透明小标签，五档语义色 |
+| `.ui-page-title` | `TerTitlePlate` | 官方 `title.jpg` 木牌 |
+| （无） | `TerSectionHeading` + `.ter-divider` | 官方 `dividerfancy.png` |
+| `.ui-dialog` | `TerDialog` | 面板 + 手写焦点陷阱（v2 未使用 Radix） |
 | `.ui-scroll-region` | 复用 + 像素滚动条 | 木纹轨道 + 金色滑块 |
-| `.ui-icon-tile` | `TerIconTile` | 像素图标 + 内凹底座 |
-| （无） | `TerStatTile` | 概览统计块（数值大号像素字） |
-| （无） | `TerTabBar` | 木牌 tab 条（对应官网导航板） |
+| `.ui-icon-tile` | `.ter-icontile` | 引用图标 + 内凹底座 |
+| （无） | `TerStat` | 概览统计块（三段面板 + 大号数值） |
+| （无） | `TerTabs` | 木牌 tab 条（`role="group"`，不是 ARIA tabs） |
 
-导航壳 `V2Layout`：顶部 logo + 横向木质导航板（对应官网那条），
-移动端折叠成抽屉。侧边栏方案可以保留，但换成木质竖板。
-
----
-
-## 6. 图标策略
-
-三层，按优先级：
-
-1. **自绘像素 sprite sheet**（16×16，SVG，`<symbol>` + `<use>`）
-   —— 覆盖：服务器、玩家、世界、终端、备份、守卫、铃铛、重启、保存、时钟、日月、
-   上传、删除、刷新、锁、眼睛、箭头、勾、叉、警告、播放。
-   ~30 个够用，风格统一且零授权风险。
-2. **保留 lucide** 作为兜底/长尾（现有依赖，不新增）。
-3. 可选：game-icons.net 补充（CC BY 3.0，需在关于页署名）。
-
-不建议直接给 lucide 加 `image-rendering: pixelated` —— 它是矢量线性图标，
-放大后不会有像素感，只会糊。
+导航壳 `V2Layout`：官方 logo + 横向导航板，active 项用 `buy_bar.png` 做 nine-slice 边框。
 
 ---
 
-## 7. 背景与生物群系
+## 6. 图标策略（现行）
 
-官网首页用单张固定图。但资源里有 Overworld / Cave / Mushroom 三套分层图，
-说明**按区域换背景**是它的设计语言。建议 v2 这么做：
+**引用 [pixelarticons](https://github.com/halfmage/pixelarticons)（MIT），不自绘**：
 
-- 默认一张**自绘 SVG 生物群系**（天空渐变 + 远山 + 树林剪影 + 地面草丛），
-  `position: fixed` + `cover`，顶部加白雾渐变保证文字可读
-- **按页面切群系**（这是最出彩的一点）：
-  - Dashboard → Overworld（明亮）
-  - Worlds → Overworld/森林
-  - Players → 村庄/营地
-  - Console → **Cave/地下**（暗、带发光矿石）
-  - Operations → Mushroom（紫蓝）
-  - Settings → 地牢/石质
-- **视差**：3~4 层 SVG，`transform: translate3d()` 跟滚动，`prefers-reduced-motion` 下关闭
-- **兜底**：设置里允许用户贴自己的图片 URL（延续"面板是可自托管的"定位）
+- 27 个名称 → 文件 stem 的映射在 `src/v2/theme/assets.ts` 的 `ICON_STEMS`；
+- 模板默认 `https://cdn.jsdelivr.net/gh/halfmage/pixelarticons@2.4.1/svg/{name}.svg`
+  （**固定版本号**，不用 `@master`：图标是每次渲染拉取的，跟着分支走会无声变更或失效）；
+- 远端 SVG 是 `fill="currentColor"` 的单色图形，`<img>` 无法继承 `currentColor`，
+  所以 `TerIcon` 用 **CSS mask** 画出来，颜色取元素自身的 `background-color`
+  （默认主题金色），一次引用即可染色，无需下载/内联/逐文件改色；
+- 模板里没有 `{name}`（或自定义值为空）时，`iconUrl()` 返回空串，`TerIcon`
+  只保留尺寸不绘制 —— 不会退化成一块实心方块；
+- lucide 仍留给 Classic UI 使用，v2 不混用。
+
+已实测：27 个 stem 在 `@2.4.1` 与 jsDelivr 上全部 200，且 jsDelivr 返回
+`access-control-allow-origin: *`（mask 跨域可用）与一周的 `max-age`。
+
+---
+
+## 7. 背景（现行）
+
+**当前实现**：单张官方 `background.ea292d81.jpg`，`position: fixed` + `cover` +
+`background-position: 50% 0%`（与官网一致），上面压一层 70%→74%→82% 的黑色遮罩
+（见 §11 的实测：不加遮罩时文字只有 1.1–1.6:1）。
+
+背景图很亮，这是全站唯一需要"牺牲画面换可读性"的地方；遮罩数值就是按
+"最深色的小字（`--ter-faint`）在背景最亮处也要 ≥4.5:1"反推出来的。
+
+**尚未实现（想法保留）**：官网资源里还有 Overworld / Cave / Mushroom 三套分层图，
+可以按页面切群系并做视差（Dashboard → Overworld、Console → Cave、Operations → Mushroom…）。
+要做的话注意：
+
+- 视差要在 `prefers-reduced-motion` 下关闭（`base.css` 已有全局降级）；
+- 换群系必须重新核对遮罩：不同背景的亮度差很多，Cave 可能需要更轻的遮罩；
+- 兜底已具备：设置里可以把 `chromeBase` 换成自建镜像（延续"面板可自托管"的定位）。
 
 ---
 
@@ -289,13 +295,14 @@ v2 需要重做的（按现有 `ui-*` 对照）：
 
 ---
 
-## 9. 需要你拍板的 5 件事
+## 9. 仍需拍板
 
-1. **入口形式**：`/next/*` 路由前缀（推荐，改动小）还是独立 `v2.html` 入口（bundle 更干净）？
-2. **字体气质**：严格照官网（Open Sans 正文，靠边框出味）还是**加像素字体**做标题/导航（更"泰拉"但可读性略降）？
-3. **背景来源**：自绘 SVG 生物群系（可控、零授权）／允许用户贴图／两者都要？
-4. **图标**：自绘像素 sprite（推荐）还是先用 game-icons.net（快，但要署名）？
-5. **群系映射**：接受第 7 节那套「按页面换群系」，还是全站统一一张背景？
+1. **入口形式**：`/next/*` 路由前缀（当前实现）还是独立 `v2.html` 入口（bundle 更干净）？
+2. **群系映射**：要不要做「按页面换群系」（§7 只列了思路，当前全站一张官方背景）？
+3. ~~美术来源~~ → 已定：全部运行时引用，默认官网 chrome + pixelarticons（§2、§6）。
+4. ~~图标~~ → 已定：pixelarticons（MIT），CSS mask 染色（§6）。
+5. **长期依赖**：官网文件名带内容哈希，Re-Logic 重新部署即失效。
+   是否要把这 10 张图镜像到自己的域名（设置里已支持填 base URL）？
 
 ---
 
@@ -314,43 +321,56 @@ v2 需要重做的（按现有 `ui-*` 对照）：
 
 口径：sRGB 相对亮度 + WCAG 2.x（含 alpha 合成）。阈值：正文 4.5:1，大字号/UI 3:1。
 
-### 11.1 本轮已修（含修前 → 修后实测）
+### 11.1 已修（含修前 → 修后实测）
+
+第三轮把美术换成"运行时引用官网"之后，前一轮的两处修复被**重新引入**（分隔线 margin、
+输入框 `outline: none`），已再次修掉。
 
 | 问题 | 修前 | 修后 |
 | --- | --- | --- |
-| `--ter-faint` 在面板 `#6b4a35` 上 | **1.89:1** | **4.77:1**（`#d3c8b0`） |
-| `--ter-muted` 在面板上 | 3.42:1 | **5.54:1**（`#e2d7c0`） |
-| 状态条文字压在背景图最亮处（太阳） | **1.05:1** | 底部加 `ter-plate` 底板（78% 黑） |
-| `.ter-bg` 顶部遮罩 | 14% → 内容区仍 1.7–2.8:1 | **64% / 70% / 80%**（最亮处 5.0:1） |
-| 页脚文字压在亮部 | 1.21:1 | 页脚底板 45% → **80% 黑** |
-| `.ter-button-gold` 暗色字 vs 渐变底端 | 3.61:1 | **4.91:1**（底端 `#b4832a`） |
-| `.ter-button-danger` 亮色字 vs 渐变顶端 | 3.69:1 | **4.51:1**（顶端 `#b85840`） |
-| `.ter-input` 边界可辨识度 | 1.23:1 | **3.27:1**（改用 `--ter-outline` 边框） |
-| `.ter-input` 焦点环 | 被同优先级 `outline:none` 吃掉 | 移除该声明，`:focus` → `:focus-visible` |
-| 词标渐变最暗档 | 2.97:1 | **4.09:1**（`#96691f`） |
-| `.ter-divider` 的 `margin: 0` | 吃掉 `mt-3`/`my-4`/`my-5`（4 处布局错） | 删除该声明 |
-| `TerDialog` | 无焦点陷阱/初始焦点/焦点回归，注释谎称 Radix 处理 | 手写 trap + 焦点回归 + `aria-labelledby/-describedby`；注释改正 |
-| 图标来源 | 弹窗可选「官网运行时」，但没有任何调用方把 `iconBase` 传进 `TerIcon`（死路径） | 新增 `assetContext`，`TerIcon` 从 context 取来源 |
-| 官网美术 404 | 静默变纯黑（哈希文件名一重新部署即失效） | 预探测失败回退自绘背景，并在弹窗提示；图标 `onError` 回退 sprite |
+| `.ter-divider { margin: 0 }`（重写时回来了） | 吃掉 `mt-3`/`my-4`/`my-5`（4 处布局错） | 删除该声明 |
+| `.ter-input { outline: none }`（同上） | 金色焦点环被同优先级规则吞掉 | 移除该声明，`:focus` → `:focus-visible` |
+| `.ter-bg` 顶部遮罩 | 64%（实测 faint 仅 4.06:1） | **70% / 74% / 82%**（faint 5.2:1、muted 6.0:1） |
+| 美术来源选「custom」 | 把 base 清成 `''` → 变成同源请求 `/background….jpg`，全部图片消失，刷新后又静默回到官网 | 新增 `chromeSource`/`iconSource` 显式字段；选 custom 不改 URL，空值一律回退默认 |
+| 图标模板 | `@master`（跟随分支，可能无声变更或 404） | 固定 `@2.4.1` |
+| 图标模板缺 `{name}` | `url("")` → 所有图标不可见 | `iconUrl()` 返回空串，`TerIcon` 保留尺寸但不绘制 |
+| 面板表面栈 | `.ter-panel` / `.ter-stat` / `.ter-dialog` 三份重复 + 未使用的 `.ter-surface-panel` | 合并为一条共享规则 |
+| 死代码 | `ter-body-root` 空类副作用、`--ter-separator`、`--ter-inset`/`--ter-info`/`--ter-nav-h`、硬编码 `2px` 圆角 | 全部删除；圆角改用 `--ter-radius` |
+
+**实测结论（用 pillow 解码真实远端图，sRGB 相对亮度 + WCAG）**
+
+| 素材 | mean | p50 | p90 | p99 |
+| --- | --- | --- | --- | --- |
+| `title.jpg`（按钮/标题木牌） | 0.075 | 0.066 | 0.077 | 0.631 |
+| `middle.jpg` / `fade_in.jpg` / `fade_out_dark.png`（面板） | 0.059–0.066 | — | ~0.07 | ~0.08 |
+| `buy_bar.png`（导航） | 0.127 | 0.057 | 0.242 | 0.868 |
+| `background.jpg`（全屏背景） | 0.448 | 0.421 | 0.841 | 0.979 |
+
+- 官方 chrome 图**都很暗**，所以亮色文字（`#f6ffe3` / `#ffffd8`）在按钮和面板上是
+  **6.4–8.1:1**，比上一版自绘渐变更安全（上一版 gold 按钮只有 3.61:1）。
+- 背景图**很亮**（top 28% 均值 0.579、p99 0.995），所以遮罩必须够重：不加遮罩时
+  文字只有 1.1–1.6:1。这是全站唯一需要"牺牲画面换可读性"的地方。
+- 已核验：10 张官网图 + 27 个 pixelarticons 文件全部 200；
+  jsDelivr 返回 `access-control-allow-origin: *`（CSS mask 跨域可用）与 `max-age=604800`。
 
 ### 11.2 仍待处理（P4）
 
-1. **`.ter-nav` 的 `overflow-x-auto`**（`V2Layout.tsx`）会裁掉两端外扩 13px 的绳结装饰 —— 要么把
-   overflow 移到内层滚动容器，要么端饰改用内边距。
-2. **`backdrop-filter: blur()`**（`.ter-header` / `.ter-overlay`）在 `prefers-reduced-transparency` 下
-   无降级；`.ter-wordmark` 的 `background-clip:text + color:transparent` 在强制色模式下有风险。
-3. **bundle 体积**：v2 的 CSS/JS 仍无条件进主包（CSS +≈16KB，占 67KB 的 24%；JS 单 chunk ≈456KB），
-   v1 路由也要下载。若要拆，需要 `/next` 路由级 `lazy()` + 动态 `import('./v2/theme/index.css')`，
+1. **外部依赖是当前最大的运营风险**：官网文件名带内容哈希，Re-Logic 重新部署即失效，
+   失败时只是退化成纯色（面板保留 `#5a3d2a`），但整站会失去"泰拉味"。
+   建议把这 10 张图镜像到自己的域名（设置里已支持填 `chromeBase`）。
+2. **27 个图标 = 27 个 SVG 请求**（jsDelivr 有 7 天缓存，首屏仍会弹出式加载）；
+   若要更稳可换成本地图标 sprite。
+3. **`/next` 会向 terraria.org / jsDelivr / Google Fonts 发请求**，无用户同意开关；
+   Google Fonts 的 `<link>` 每次挂载注入（离开再进入 FOUT 重现）。
+4. **bundle 体积**：v2 的 CSS/JS 无条件进主包（CSS 62KB、JS 447KB），v1 路由也要下载。
+   若要拆需要 `/next` 路由级 `lazy()` + 动态 `import('./v2/theme/index.css')`，
    并注意 v2 规则处于无层级（unlayered）、优先于 Tailwind 的 `@layer`。
-4. **Google Fonts** 由 `V2Layout` 每次挂载注入 `<link>`（离开再进入会重新解析，FOUT 重现），
-   且无同意/离线开关。
-5. **死代码**：`textures.css` 的 `.ter-surface/-deep/-wood`（与 `.ter-panel` 重复且已漂移）、
-   `base.css` 的 `.ter-lift`、`tokens.css` 的 `--ter-info` / `--ter-nav-h` 未被引用；
-   `textures.css` 中 `--ter-tex-moss` 上方还留着一句旧注释。
-6. **token 与字面量两套真相**：`--ter-ok/--ter-warn/--ter-danger/--ter-info` 只在 KitchenSink 的
-   行内样式里用到，组件内部仍写死字面量。
-7. **文档级滚动条**：`/next` 的主滚动条在 `html`/`body` 上，`.ter-theme ::-webkit-scrollbar` 管不到，
-   仍是 Classic UI 的灰色圆角条。
-8. `.ter-tab` / `.ter-tabs` / `.ter-badge-*` 的**边框**对比度 1.67–1.99:1，状态另由 4.95:1 的金色
-   下划线承载，按 1.4.11 可接受；若后续去掉金线需要重新评估。
+5. **`backdrop-filter: blur()`**（`.ter-header` / `.ter-overlay`）在
+   `prefers-reduced-transparency` 下无降级；强制色模式下需复查。
+6. **`.ter-lift` / `.ter-h4`** 仍未被引用；`--ter-ok/--ter-warn/--ter-danger` 只在
+   KitchenSink 的行内样式里用到，组件内部仍写死字面量。
+7. **文档级滚动条**：`/next` 的主滚动条在 `html`/`body` 上，`.ter-theme ::-webkit-scrollbar`
+   管不到，仍是 Classic UI 的灰色圆角条。
+8. `.ter-tab` / `.ter-tabs` / `.ter-badge-*` 的**边框**对比度 1.67–1.99:1，状态另由文字与
+   金色边框承载，按 1.4.11 可接受；若后续改掉这些信号需要重新评估。
 

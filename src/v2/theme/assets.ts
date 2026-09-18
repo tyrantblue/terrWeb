@@ -1,76 +1,173 @@
 /**
- * Where the v2 chrome sources its artwork.
+ * Asset registry for the Terraria-style UI.
  *
- * `original` (default) is generated in this repo — SVG textures and a
- * self-drawn icon sprite — so nothing copyrighted is redistributed.
+ * Every pixel of artwork is **referenced at runtime** — none of it is drawn
+ * by hand in this repo, and none of it is bundled. Two independent sources:
  *
- * `official` points at terraria.org at runtime. Those assets are Re-Logic's
- * and are deliberately NOT committed; the browser fetches them directly,
- * the same way it would when visiting the site. Two caveats worth knowing:
+ *   chrome — the official Terraria site's UI images (panel pieces, the
+ *            pixel-grass edge, the wooden title plate, the nav button, the
+ *            logo). These are Re-Logic's; the browser fetches them from
+ *            terraria.org the same way it would when visiting the site.
+ *            Nothing is redistributed here.
  *
- *   1. their filenames are content-hashed (`background.ea292d81.jpg`), so
- *      they break whenever Re-Logic redeploys — treat this as best-effort;
- *   2. `background-size: cover` needs no CORS, but the icon `<img>`s only
- *      work if their server allows it.
+ *   icons  — @halfmage/pixelarticons (MIT), served from jsDelivr. Its SVGs
+ *            use `fill="currentColor"`, so they are tinted with a CSS mask
+ *            instead of being recoloured per file.
  *
- * `custom` lets the user paste their own URLs (a local mirror works well).
+ * Caveat worth knowing: terraria.org's filenames are content-hashed
+ * (`fade_in.84ea52c8.jpg`), so they break whenever Re-Logic redeploys. Both
+ * bases are therefore overridable — point `chromeBase` at a local mirror to
+ * stop depending on their site.
  */
 
-export type AssetSource = 'original' | 'official' | 'custom'
+/** Canonical icon names used across the v2 UI. */
+export type TerIconName =
+  | 'dashboard'
+  | 'worlds'
+  | 'players'
+  | 'console'
+  | 'operations'
+  | 'settings'
+  | 'server'
+  | 'restart'
+  | 'power'
+  | 'save'
+  | 'sun'
+  | 'moon'
+  | 'upload'
+  | 'download'
+  | 'trash'
+  | 'refresh'
+  | 'lock'
+  | 'check'
+  | 'cross'
+  | 'warning'
+  | 'info'
+  | 'play'
+  | 'heart'
+  | 'eye'
+  | 'clock'
+  | 'search'
+  | 'bell'
 
-export interface TerrariaAssets {
-  /** Page backdrop; falls back to the generated scene when empty. */
-  background: string
-  /** Base URL used for official-style icon PNGs; empty = self-drawn. */
-  iconBase: string
+/** pixelarticons file stems, verified to exist on the CDN. */
+export const ICON_STEMS: Record<TerIconName, string> = {
+  dashboard: 'blocks-sharp',
+  worlds: 'globe',
+  players: 'users-sharp',
+  console: 'terminal-sharp',
+  operations: 'shield-sharp',
+  settings: 'settings-2-sharp',
+  server: 'server-sharp',
+  restart: 'reload-sharp',
+  power: 'power',
+  save: 'save-sharp',
+  sun: 'sun',
+  moon: 'moon',
+  upload: 'upload-sharp',
+  download: 'download-sharp',
+  trash: 'trash-sharp',
+  refresh: 'refresh-sharp',
+  lock: 'lock-sharp',
+  check: 'check',
+  cross: 'close',
+  warning: 'square-alert-sharp',
+  info: 'info-box-sharp',
+  play: 'play',
+  heart: 'heart',
+  eye: 'eye',
+  clock: 'clock',
+  search: 'search',
+  bell: 'bell-sharp',
 }
 
-const OFFICIAL_BASE = 'https://terraria.org/static/media'
-
-export const ASSET_PRESETS: Record<AssetSource, TerrariaAssets> = {
-  original: {
-    background: '',
-    iconBase: '',
-  },
-  official: {
-    background: `${OFFICIAL_BASE}/background.ea292d81.jpg`,
-    iconBase: OFFICIAL_BASE,
-  },
-  custom: {
-    background: '',
-    iconBase: '',
-  },
-}
-
-const STORAGE_KEY = 'terraria-panel.v2.assets'
-
-export interface AssetSettings {
-  source: AssetSource
-  custom: TerrariaAssets
-}
-
-const DEFAULT_SETTINGS: AssetSettings = {
-  source: 'original',
-  custom: { background: '', iconBase: '' },
-}
-
-const SOURCES: readonly AssetSource[] = [
-  'original',
-  'official',
-  'custom',
-]
+export const DEFAULT_CHROME_BASE = 'https://terraria.org/static/media'
+/**
+ * Pinned to a release, not `@master`: the icons are fetched per render, and
+ * a moving branch can change or drop a file with no change on our side.
+ * (jsDelivr serves this from cache for a week, so a bump is also a perf
+ * decision, not just correctness.)
+ */
+export const PIXELARTICONS_VERSION = '2.4.1'
+export const PIXELARTICONS_TEMPLATE =
+  `https://cdn.jsdelivr.net/gh/halfmage/pixelarticons@${PIXELARTICONS_VERSION}/svg/{name}.svg`
 
 /**
- * `localStorage` is user-writable and survives releases, so the stored
- * source cannot be trusted to be one of the three keys: an unknown value
- * would make `ASSET_PRESETS[source]` resolve to `undefined` and take the
- * whole `/next` tree down on the first render.
+ * Chrome slots → official filenames. The hashes are part of the name; they
+ * change when Re-Logic redeploys, which is why `chromeBase` is configurable.
  */
-function isAssetSource(value: unknown): value is AssetSource {
-  return (
-    typeof value === 'string' &&
-    (SOURCES as readonly string[]).includes(value)
-  )
+export const CHROME_FILES = {
+  background: 'background.ea292d81.jpg',
+  panelTop: 'fade_in.84ea52c8.jpg',
+  panelMiddle: 'middle.12ac987e.jpg',
+  panelBottom: 'fade_out_dark.c2374b3f.png',
+  grass: 'wall_top_grass.e8d5ebf5.png',
+  titlePlate: 'title.eb096681.jpg',
+  navItem: 'buy_bar.84cec77d.png',
+  divider: 'dividerfancy.182a2424.png',
+  separator: 'separator-desktop.97294121.png',
+  logo: 'logo.734118ae.png',
+} as const
+
+export type ChromeSlot = keyof typeof CHROME_FILES
+
+/** Intrinsic sizes, so the pieces can be laid out without distortion. */
+export const CHROME_SIZE: Record<ChromeSlot, { w: number; h: number }> = {
+  background: { w: 1920, h: 1016 },
+  panelTop: { w: 970, h: 138 },
+  panelMiddle: { w: 970, h: 236 },
+  panelBottom: { w: 970, h: 106 },
+  grass: { w: 970, h: 13 },
+  titlePlate: { w: 970, h: 44 },
+  navItem: { w: 168, h: 56 },
+  divider: { w: 564, h: 59 },
+  separator: { w: 970, h: 52 },
+  logo: { w: 421, h: 140 },
+}
+
+export type ChromeSource = 'official' | 'custom'
+export type IconSource = 'pixelarticons' | 'custom'
+
+export interface AssetSettings {
+  /**
+   * Which source is *selected*. Kept separate from the URL on purpose:
+   * deriving it from the value made "custom" mean "the URL is empty", so
+   * clicking that option blanked every image and then silently reverted on
+   * reload.
+   */
+  chromeSource: ChromeSource
+  /** Base URL serving the files named in `CHROME_FILES`. */
+  chromeBase: string
+  iconSource: IconSource
+  /** Icon URL template; `{name}` is replaced with the mapped stem. */
+  iconTemplate: string
+}
+
+export const DEFAULT_ASSETS: AssetSettings = {
+  chromeSource: 'official',
+  chromeBase: DEFAULT_CHROME_BASE,
+  iconSource: 'pixelarticons',
+  iconTemplate: PIXELARTICONS_TEMPLATE,
+}
+
+const CHROME_SOURCES: readonly ChromeSource[] = ['official', 'custom']
+const ICON_SOURCES: readonly IconSource[] = ['pixelarticons', 'custom']
+
+const STORAGE_KEY = 'terraria-panel.v2.assets.v2'
+
+function pickSource<T extends string>(
+  value: unknown,
+  allowed: readonly T[],
+  fallback: T,
+): T {
+  return typeof value === 'string' &&
+    (allowed as readonly string[]).includes(value)
+    ? (value as T)
+    : fallback
+}
+
+function pickUrl(value: unknown, fallback: string) {
+  return typeof value === 'string' && value.trim() ? value : fallback
 }
 
 export function loadAssetSettings(): AssetSettings {
@@ -78,26 +175,22 @@ export function loadAssetSettings(): AssetSettings {
     const raw = window.localStorage.getItem(STORAGE_KEY)
 
     if (!raw) {
-      return DEFAULT_SETTINGS
+      return DEFAULT_ASSETS
     }
 
     const parsed = JSON.parse(raw) as Partial<AssetSettings>
 
     return {
-      source: isAssetSource(parsed.source) ? parsed.source : 'original',
-      custom: {
-        background:
-          typeof parsed.custom?.background === 'string'
-            ? parsed.custom.background
-            : '',
-        iconBase:
-          typeof parsed.custom?.iconBase === 'string'
-            ? parsed.custom.iconBase
-            : '',
-      },
+      chromeSource: pickSource(parsed.chromeSource, CHROME_SOURCES, 'official'),
+      chromeBase: pickUrl(parsed.chromeBase, DEFAULT_ASSETS.chromeBase),
+      iconSource: pickSource(parsed.iconSource, ICON_SOURCES, 'pixelarticons'),
+      iconTemplate: pickUrl(
+        parsed.iconTemplate,
+        DEFAULT_ASSETS.iconTemplate,
+      ),
     }
   } catch {
-    return DEFAULT_SETTINGS
+    return DEFAULT_ASSETS
   }
 }
 
@@ -105,130 +198,76 @@ export function saveAssetSettings(settings: AssetSettings) {
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(settings))
   } catch {
-    // Private browsing / quota: the toggle just won't persist.
+    // Private browsing / quota: the choice just will not persist.
   }
 }
 
-export function resolveAssets(settings: AssetSettings): TerrariaAssets {
-  if (settings.source === 'custom') {
-    return settings.custom
+/**
+ * The URL actually used for a slot. An empty base or an icon template
+ * without `{name}` would otherwise turn into a same-origin request for
+ * `/background….jpg` (or a `url("")` mask that hides every icon), so both
+ * fall back to the default rather than breaking the page.
+ */
+export function effectiveChromeBase(settings: AssetSettings) {
+  if (settings.chromeSource === 'official') {
+    return DEFAULT_ASSETS.chromeBase
   }
 
-  // Defensive: a caller that bypassed `loadAssetSettings` must not be able
-  // to turn this into `undefined.background` at render time.
-  return ASSET_PRESETS[settings.source] ?? ASSET_PRESETS.original
+  return settings.chromeBase.trim() || DEFAULT_ASSETS.chromeBase
 }
 
-/**
- * A generated biome backdrop, drawn as SVG so it can ship in-repo.
- *
- * Composition follows the official photograph's structure: washed-out
- * sky, distant hills, a tree line, and a darker ground band — light at
- * the top so headings stay readable, detailed at the bottom.
- */
-/**
- * Accept either a raw URL or a ready-made CSS `url(...)` value. A bare URL
- * dropped straight into `background-image` is invalid CSS and resolves to
- * `none`, which is how the official preset silently did nothing.
- */
-export function toCssBackground(value: string) {
-  const trimmed = value.trim()
+export function effectiveIconTemplate(settings: AssetSettings) {
+  if (settings.iconSource === 'pixelarticons') {
+    return DEFAULT_ASSETS.iconTemplate
+  }
 
-  if (!trimmed) {
+  return settings.iconTemplate.trim() || DEFAULT_ASSETS.iconTemplate
+}
+
+export function chromeUrl(base: string, slot: ChromeSlot) {
+  return `${base.replace(/\/+$/, '')}/${CHROME_FILES[slot]}`
+}
+
+/** Empty when the template is not usable, so callers can skip drawing. */
+export function iconUrl(template: string, name: TerIconName) {
+  if (!template.includes('{name}')) {
     return ''
   }
 
-  if (/^url\(/i.test(trimmed)) {
-    return trimmed
-  }
-
-  return `url("${trimmed.replace(/"/g, '\\"')}")`
+  return template.replace('{name}', ICON_STEMS[name])
 }
 
-export const ORIGINAL_BACKGROUND = `url("data:image/svg+xml,${encodeURIComponent(
-  `<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMin slice">
-    <defs>
-      <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stop-color="#7fb6e0"/>
-        <stop offset="34%" stop-color="#a8cfe8"/>
-        <stop offset="58%" stop-color="#bcd9c0"/>
-        <stop offset="100%" stop-color="#6f9a5f"/>
-      </linearGradient>
-      <linearGradient id="far" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stop-color="#6f92ac"/>
-        <stop offset="100%" stop-color="#54748c"/>
-      </linearGradient>
-      <linearGradient id="mid" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stop-color="#5f8f52"/>
-        <stop offset="100%" stop-color="#3f6b39"/>
-      </linearGradient>
-      <linearGradient id="ground" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stop-color="#4c7a3a"/>
-        <stop offset="100%" stop-color="#22381c"/>
-      </linearGradient>
-      <radialGradient id="sun" cx="50%" cy="50%" r="50%">
-        <stop offset="0%" stop-color="#ffffff" stop-opacity="1"/>
-        <stop offset="45%" stop-color="#fdf3c8" stop-opacity="0.7"/>
-        <stop offset="100%" stop-color="#fdf3c8" stop-opacity="0"/>
-      </radialGradient>
-    </defs>
+/** Options offered by the artwork dialog. */
+export const CHROME_PRESETS: ReadonlyArray<{
+  id: ChromeSource
+  label: string
+  note: string
+}> = [
+  {
+    id: 'official',
+    label: 'terraria.org (official)',
+    note: 'Loads the real Terraria panel pieces, pixel grass, title plate, nav button and logo from Re-Logic at runtime. Nothing is bundled. Their filenames are hashed, so a redeploy can break them.',
+  },
+  {
+    id: 'custom',
+    label: 'Local mirror / custom base URL',
+    note: 'Point at a mirror using the same filenames (e.g. /assets/terraria) to stop depending on their site. The official base stays in use until you apply a URL below.',
+  },
+]
 
-    <rect width="1600" height="900" fill="url(#sky)"/>
-    <circle cx="1210" cy="132" r="190" fill="url(#sun)"/>
-    <circle cx="1210" cy="132" r="48" fill="#fffdf0" opacity="0.92"/>
-
-    <!-- far ridge -->
-    <path d="M0 452 L170 366 L320 430 L520 330 L700 424 L880 344 L1080 428 L1290 356 L1460 424 L1600 370 L1600 900 L0 900 Z"
-          fill="url(#far)" opacity="0.85"/>
-
-    <!-- Floating islands, a Terraria staple. Drawn with a flat grass cap
-         and a faceted rock underside so they read as scenery rather than
-         as a stray triangle behind the content. -->
-    <g opacity="0.88">
-      <g>
-        <path d="M262 150 h96 v11 h-96 z" fill="#79a862"/>
-        <path d="M262 161 h96 l-22 30 -26 26 -26 -26 -22 -30 z" fill="#4a6b41"/>
-        <path d="M262 150 h96 v4 h-96 z" fill="#93c077"/>
-        <path d="M296 167 l14 20 -14 14 -14 -14 z" fill="#3c5834" opacity="0.7"/>
-      </g>
-      <g>
-        <path d="M1188 108 h72 v9 h-72 z" fill="#79a862"/>
-        <path d="M1188 117 h72 l-17 23 -19 19 -19 -19 -17 -23 z" fill="#4a6b41"/>
-        <path d="M1188 108 h72 v3 h-72 z" fill="#93c077"/>
-      </g>
-      <g>
-        <path d="M880 206 h58 v7 h-58 z" fill="#79a862"/>
-        <path d="M880 213 h58 l-14 18 -15 15 -15 -15 -14 -18 z" fill="#4a6b41"/>
-        <path d="M880 206 h58 v3 h-58 z" fill="#93c077"/>
-      </g>
-    </g>
-
-    <!-- mid hills -->
-    <path d="M0 596 C 220 512, 430 636, 690 566 C 930 502, 1170 626, 1600 552 L1600 900 L0 900 Z"
-          fill="url(#mid)"/>
-
-    <!-- tree line on the mid ridge -->
-    <g fill="#33552c">
-      <rect x="196" y="556" width="11" height="58"/>
-      <ellipse cx="201" cy="540" rx="52" ry="40"/>
-      <rect x="470" y="580" width="10" height="54"/>
-      <ellipse cx="475" cy="566" rx="44" ry="34"/>
-      <rect x="1176" y="540" width="12" height="64"/>
-      <ellipse cx="1182" cy="522" rx="58" ry="44"/>
-      <rect x="1408" y="574" width="10" height="56"/>
-      <ellipse cx="1413" cy="558" rx="46" ry="36"/>
-    </g>
-
-    <!-- foreground ground -->
-    <path d="M0 774 C 300 726, 620 812, 940 766 C 1200 730, 1420 798, 1600 762 L1600 900 L0 900 Z"
-          fill="url(#ground)"/>
-
-    <!-- near trees framing the viewport -->
-    <g fill="#24401d">
-      <rect x="58" y="628" width="18" height="150"/>
-      <ellipse cx="67" cy="596" rx="88" ry="70"/>
-      <rect x="1500" y="604" width="18" height="174"/>
-      <ellipse cx="1509" cy="570" rx="96" ry="76"/>
-    </g>
-  </svg>`,
-)}")`
+export const ICON_PRESETS: ReadonlyArray<{
+  id: IconSource
+  label: string
+  note: string
+}> = [
+  {
+    id: 'pixelarticons',
+    label: `Pixelarticons (MIT, pinned ${PIXELARTICONS_VERSION})`,
+    note: '500+ open-licensed pixel icons from jsDelivr, tinted to the theme gold with a CSS mask.',
+  },
+  {
+    id: 'custom',
+    label: 'Custom template',
+    note: 'Any URL containing {name}. The name→file mapping lives in src/v2/theme/assets.ts. The default set stays in use until you apply one.',
+  },
+]

@@ -92,9 +92,22 @@ export const API_BASE_URL = 'https://terraria-api.tyrantblue.xyz'
 | `/next/kit` | 组件总览，用于挑样/验收 |
 | `/next/{worlds,players,console,operations,settings}` | 占位页，逐步迁移 |
 
-右上角「眼睛」按钮可切换美术来源（默认自绘，不加载任何外部资源）。
-设计说明、决策记录与分阶段计划见 `docs/ui-v2-plan.md`；Classic UI 仍是默认入口，
-`/next` 目前是预览，未列入导航。
+Classic UI 顶栏右上角有「New UI」按钮进入预览；v2 页脚/导航里的「Classic UI」可返回。
+
+**美术全部在运行时引用，仓库不存放、不打包任何图片**：
+
+| 用途 | 默认来源 |
+| --- | --- |
+| 背景、面板三段、像素草带、标题木牌、导航板、logo | `terraria.org/static/media/*`（Re-Logic 官方美术） |
+| 图标（27 个） | `cdn.jsdelivr.net/gh/halfmage/pixelarticons@2.4.1`（MIT，CSS mask 染色） |
+| 字体 | Google Fonts（Open Sans / Merriweather） |
+
+因此**打开 `/next` 会向 terraria.org、cdn.jsdelivr.net、fonts.googleapis.com 发起请求**，
+离线或受限网络下会退化成纯色（面板保留 `#5a3d2a` 底色，图标不绘制）。
+右上角「眼睛」按钮可把 chrome 或图标换成自建镜像，选择存在浏览器本地。
+
+> 注意：官网文件名带内容哈希（`fade_in.84ea52c8.jpg`），Re-Logic 重新部署就会失效；
+> 长期使用建议自建镜像。详见 `docs/ui-v2-plan.md`。
 
 ## 部署
 

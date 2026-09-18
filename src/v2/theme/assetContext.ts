@@ -1,25 +1,29 @@
 import { createContext, useContext } from 'react'
 
-import type { AssetSource } from './assets'
+import type { AssetSettings } from './assets'
 
 /**
- * The icon half of the artwork source, published to the component tree so
- * `TerIcon` can pick it up wherever it is rendered. Without this the
- * "terraria.org (runtime)" / custom-base choices stored by the artwork
- * dialog changed the backdrop but silently left every icon on the
- * self-drawn sprite.
+ * Artwork source published to the component tree.
+ *
+ * Every piece of v2 chrome is referenced at runtime rather than drawn
+ * in-repo, so both halves — the chrome base URL and the icon template —
+ * have to reach the components that render them. Without this the artwork
+ * dialog changed the backdrop but silently left every icon on its default
+ * set.
  */
 export interface TerAssetValue {
-  source: AssetSource
-  /** Base URL for official-style icon PNGs; empty means self-drawn. */
-  iconBase: string
+  assets: AssetSettings
+  update: (next: AssetSettings) => void
 }
 
-export const TerAssetsContext = createContext<TerAssetValue>({
-  source: 'original',
-  iconBase: '',
-})
+export const TerAssetsContext = createContext<TerAssetValue | null>(null)
 
 export function useTerAssets() {
-  return useContext(TerAssetsContext)
+  const value = useContext(TerAssetsContext)
+
+  if (value === null) {
+    throw new Error('useTerAssets must be used inside the v2 layout')
+  }
+
+  return value
 }

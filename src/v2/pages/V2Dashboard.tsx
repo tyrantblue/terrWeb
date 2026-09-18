@@ -129,7 +129,7 @@ export default function V2Dashboard() {
 
       <TerSectionHeading
         title="Server overview"
-        icon="grid"
+        icon="dashboard"
         description="Live state pulled from the same providers the classic UI uses."
         actions={
           <TerButton icon="refresh" onClick={() => void refresh()}>
@@ -158,7 +158,7 @@ export default function V2Dashboard() {
         <TerStat
           label="World"
           value={status?.world?.name ?? '—'}
-          icon="world"
+          icon="worlds"
           hint={status?.world ? `${status.world.file} · ${(status.world.size / 1024 / 1024).toFixed(1)} MB` : undefined}
         />
       </div>
@@ -255,7 +255,7 @@ export default function V2Dashboard() {
               {operations.slice(0, 6).map((operation) => (
                 <TerRow
                   key={operation.id}
-                  icon={operation.kind.includes('world') ? 'world' : 'restart'}
+                  icon={operation.kind.includes('world') ? 'worlds' : 'restart'}
                   title={operation.kind}
                   subtitle={
                     operation.state === 'succeeded' || operation.state === 'failed'

@@ -1,72 +1,50 @@
 /**
  * Component chrome for the Terraria-style UI.
  *
- * House style, taken from the official site's panels:
- *   - warm brown grain surface
- *   - a 3px dark inset band, then a 1px light hairline
- *   - a gold-brown outline
- *   - a hard 2-3px drop shadow (pixel art casts shadows, it does not blur)
- *   - an optional pixel-grass band on the top and/or bottom edge
- * Corners stay at 2px: pill shapes break the pixel illusion.
+ * All surfaces come from the referenced official artwork (see
+ * `textures.css`); CSS only handles layout, type, states and the tinting of
+ * the referenced icon set. Nothing here draws artwork.
+ *
+ * Two rules carry the whole look:
+ *   - panels are the three official pieces stacked (top / tiling middle /
+ *     bottom) with the pixel-grass strip on the top edge
+ *   - interactive chrome is the official nav button plate, nine-sliced so
+ *     its left stud keeps its shape while the bar stretches
  */
 
 /* ====================================================================
    Panel
    ==================================================================== */
 
+/* One surface stack for every official panel piece: top cap, tiling middle,
+   bottom cap. Shared rather than repeated so the three users cannot drift,
+   and the colour doubles as the fallback if the artwork never loads. */
+.ter-theme .ter-panel,
+.ter-theme .ter-stat,
+.ter-theme .ter-dialog {
+  background-color: #5a3d2a;
+  background-image: var(--ter-panel-layers);
+}
+
 .ter-theme .ter-panel {
   position: relative;
-  border: 1px solid var(--ter-outline);
-  border-radius: var(--ter-radius);
-  background-color: var(--ter-panel);
-  background-image:
-    var(--ter-tex-grain),
-    linear-gradient(
-      180deg,
-      rgb(255 255 255 / 7%) 0%,
-      rgb(255 255 255 / 2%) 16%,
-      rgb(0 0 0 / 0%) 55%,
-      rgb(0 0 0 / 22%) 100%
-    );
-  background-blend-mode: overlay, normal;
-  box-shadow:
-    inset 0 0 0 3px rgb(0 0 0 / 18%),
-    inset 0 0 0 4px var(--ter-inset),
-    0 3px 0 rgb(0 0 0 / 45%);
+  border: 0;
+  box-shadow: 0 3px 0 rgb(0 0 0 / 45%);
 }
 
-/* Panels that are recessed into the surface (status strips, code wells). */
+/* Recessed wells (status strips, code areas, empty states). */
 .ter-theme .ter-panel-inset {
   position: relative;
-  border: 1px solid rgb(0 0 0 / 45%);
+  border: 1px solid rgb(0 0 0 / 55%);
   border-radius: var(--ter-radius);
-  background-color: var(--ter-panel-deep);
-  background-image:
-    var(--ter-tex-grain),
-    linear-gradient(
-      180deg,
-      rgb(0 0 0 / 32%) 0%,
-      rgb(0 0 0 / 10%) 45%,
-      rgb(255 255 255 / 3%) 100%
-    );
-  background-blend-mode: overlay, normal;
+  background-color: rgb(28 18 12 / 82%);
   box-shadow:
-    inset 0 0 0 1px rgb(255 255 255 / 5%),
-    inset 0 2px 4px rgb(0 0 0 / 45%);
-}
-
-/* Backing for text that would otherwise sit straight on the biome artwork.
-   Even after the scrim, the brightest part of the backdrop (the sun) is far
-   too light for 12–13px text, so anything directly over it gets a plate. */
-.ter-theme .ter-plate {
-  border: 1px solid rgb(0 0 0 / 45%);
-  border-radius: var(--ter-radius);
-  background-color: rgb(8 6 4 / 78%);
-  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 5%);
+    inset 0 2px 5px rgb(0 0 0 / 55%),
+    0 1px 0 rgb(255 255 255 / 6%);
 }
 
 /* ====================================================================
-   Title plate — the wooden sign a section heading sits on
+   Title plate
    ==================================================================== */
 
 .ter-theme .ter-titleplate {
@@ -74,27 +52,14 @@
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  padding: 7px 16px;
-  border: 1px solid var(--ter-outline);
-  border-radius: var(--ter-radius);
-  background-color: var(--ter-panel-lo);
-  background-image:
-    var(--ter-tex-grain-coarse),
-    linear-gradient(
-      180deg,
-      var(--ter-panel-hi) 0%,
-      var(--ter-panel) 48%,
-      var(--ter-panel-lo) 100%
-    );
-  background-blend-mode: overlay, normal;
-  box-shadow:
-    inset 0 0 0 1px var(--ter-inset),
-    inset 0 1px 0 rgb(255 255 255 / 10%),
-    0 2px 0 rgb(0 0 0 / 45%);
+  min-height: 44px;
+  padding: 0 26px;
+  color: var(--ter-heading);
+  text-shadow: 0 1px 0 rgb(0 0 0 / 55%);
 }
 
 /* ====================================================================
-   Ornate divider — replaces the official dividerfancy.png, drawn as SVG
+   Divider
    ==================================================================== */
 
 .ter-theme .ter-divider {
@@ -102,179 +67,133 @@
   border: 0;
   /* No `margin` here on purpose: this rule is unlayered and therefore beats
      Tailwind's `@layer utilities`, so declaring `margin: 0` silently killed
-     the `mt-3` / `my-4` / `my-5` every call site passes. The UA default is
-     overridden by those utilities, which is the layout we actually want. */
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='420' height='26' viewBox='0 0 420 26'%3E%3Cg fill='none' stroke='%23c9a227' stroke-width='1.5' stroke-linecap='round'%3E%3Cpath d='M6 15h150'/%3E%3Cpath d='M264 15h150'/%3E%3Cpath d='M156 15c10 0 14-6 24-6s14 6 24 6'/%3E%3Cpath d='M264 15c-10 0-14 6-24 6s-14-6-24-6'/%3E%3C/g%3E%3Cg stroke='%23c9a227' stroke-width='1.5' fill='%234a3325'%3E%3Cpath d='M210 3l11 10-11 10-11-10z'/%3E%3C/g%3E%3Cg fill='%237cb342'%3E%3Cpath d='M210 8l4 5-4 5-4-5z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: center;
-  background-size: contain;
-  opacity: 0.75;
+     the `mt-3` / `my-4` / `my-5` every call site passes. */
+  opacity: 0.8;
 }
 
 /* ====================================================================
-   Buttons
+   Buttons — the official wooden plate (title.jpg), same bevel as the
+   title bars. The nav button art is reserved for the active nav item,
+   where its left stud reads as intentional rather than as clutter.
    ==================================================================== */
 
-.ter-theme .ter-button {
+.ter-theme .ter-button,
+.ter-theme .ter-iconbtn {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 8px 14px;
-  border: 1px solid var(--ter-outline);
+  border: 1px solid rgb(0 0 0 / 45%);
   border-radius: var(--ter-radius);
-  background-color: var(--ter-panel);
-  background-image:
-    var(--ter-tex-grain),
-    linear-gradient(
-      180deg,
-      var(--ter-panel-hi) 0%,
-      var(--ter-panel) 46%,
-      var(--ter-panel-lo) 100%
-    );
-  background-blend-mode: overlay, normal;
-  box-shadow:
-    inset 0 0 0 1px var(--ter-inset),
-    inset 0 1px 0 rgb(255 255 255 / 12%),
-    0 2px 0 rgb(0 0 0 / 45%);
+  background-color: transparent;
+  background-image: var(--ter-title-plate);
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 100% 100%;
+  min-height: 44px;
+  padding: 0 18px;
   color: var(--ter-body);
   font-family: var(--ter-font-body);
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 600;
   line-height: 1;
-  text-shadow: 0 1px 0 rgb(0 0 0 / 45%);
+  text-shadow: 0 1px 0 rgb(0 0 0 / 55%);
+  box-shadow: 0 2px 0 rgb(0 0 0 / 45%);
   cursor: pointer;
   transition: filter 90ms linear;
 }
 
-.ter-theme .ter-button:hover:not(:disabled) {
-  filter: brightness(1.14);
-}
-
-.ter-theme .ter-button:active:not(:disabled) {
-  transform: translateY(2px);
-  box-shadow:
-    inset 0 0 0 1px var(--ter-inset),
-    inset 0 2px 0 rgb(0 0 0 / 30%),
-    0 0 0 rgb(0 0 0 / 45%);
-}
-
-.ter-theme .ter-button:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-/* Gold: the primary call to action, like the site's BUY badge.
-   The dark label needs a light plate: the previous bottom stop (#9a6d1f)
-   scored 3.61:1 against #2a1c08, below AA for 14px text. These stops score
-   11.9:1 / 8.4:1 / 4.9:1. */
-.ter-theme .ter-button-gold {
-  border-color: #f0d080;
-  background-color: #b4832a;
-  background-image:
-    var(--ter-tex-grain),
-    linear-gradient(180deg, #f3d98a 0%, #d9b455 48%, #b4832a 100%);
-  color: #2a1c08;
-  text-shadow: 0 1px 0 rgb(255 255 255 / 28%);
-}
-
-/* Danger: keep it warm-red so it still belongs to the world.
-   The light label needs a darker plate: #c8674f at the top scored 3.69:1.
-   These stops score 4.5:1 / 5.8:1 / 9.1:1. */
-.ter-theme .ter-button-danger {
-  border-color: #e8a08f;
-  background-color: #8c3b2c;
-  background-image:
-    var(--ter-tex-grain),
-    linear-gradient(180deg, #b85840 0%, #a8442f 48%, #7a2e1f 100%);
-}
-
-.ter-theme .ter-button-ghost {
-  border-color: rgb(201 162 39 / 35%);
-  background-image: none;
-  background-color: rgb(0 0 0 / 22%);
-  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 5%);
-}
-
-/* Square icon button, for row actions. */
-.ter-theme .ter-iconbtn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  padding: 0;
-  border: 1px solid var(--ter-outline);
-  border-radius: var(--ter-radius);
-  background-color: var(--ter-panel);
-  background-image:
-    var(--ter-tex-grain),
-    linear-gradient(180deg, var(--ter-panel-hi), var(--ter-panel) 50%, var(--ter-panel-lo));
-  background-blend-mode: overlay, normal;
-  box-shadow:
-    inset 0 0 0 1px var(--ter-inset),
-    0 2px 0 rgb(0 0 0 / 45%);
-  color: var(--ter-body);
-  cursor: pointer;
-  transition: filter 90ms linear;
-}
-
+.ter-theme .ter-button:hover:not(:disabled),
 .ter-theme .ter-iconbtn:hover:not(:disabled) {
-  filter: brightness(1.16);
+  filter: brightness(1.15);
 }
 
+.ter-theme .ter-button:active:not(:disabled),
 .ter-theme .ter-iconbtn:active:not(:disabled) {
   transform: translateY(2px);
-  box-shadow: inset 0 0 0 1px var(--ter-inset);
+  filter: brightness(0.94);
 }
 
+.ter-theme .ter-button:disabled,
 .ter-theme .ter-iconbtn:disabled {
   opacity: 0.45;
   cursor: not-allowed;
 }
 
+/* Square icon button keeps the same plate, just narrower. */
+.ter-theme .ter-iconbtn {
+  width: 44px;
+  min-height: 44px;
+  padding: 0;
+}
+
+/* Variants tint the same plate rather than swapping artwork. */
+.ter-theme .ter-button-gold {
+  color: #fff6d8;
+  filter: saturate(1.25) brightness(1.08);
+}
+.ter-theme .ter-button-gold:hover:not(:disabled) {
+  filter: saturate(1.25) brightness(1.22);
+}
+
+.ter-theme .ter-button-danger {
+  color: #ffd8ce;
+  filter: saturate(1.35) hue-rotate(-12deg) brightness(1.02);
+}
+.ter-theme .ter-button-danger:hover:not(:disabled) {
+  filter: saturate(1.35) hue-rotate(-12deg) brightness(1.16);
+}
+
+.ter-theme .ter-button-ghost {
+  filter: saturate(0.7) brightness(0.86);
+}
+.ter-theme .ter-button-ghost:hover:not(:disabled) {
+  filter: saturate(0.8) brightness(1.0);
+}
+
 /* ====================================================================
-   Badges / status
+   Badges
    ==================================================================== */
 
 .ter-theme .ter-badge {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 3px 9px;
-  border: 1px solid rgb(0 0 0 / 40%);
+  padding: 3px 10px;
+  border: 1px solid rgb(0 0 0 / 45%);
   border-radius: var(--ter-radius);
-  background-color: rgb(0 0 0 / 32%);
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 8%);
+  background-color: rgb(0 0 0 / 38%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 9%);
   font-size: 12px;
   font-weight: 600;
   line-height: 1.5;
   letter-spacing: 0.02em;
-  text-shadow: 0 1px 0 rgb(0 0 0 / 45%);
+  text-shadow: 0 1px 0 rgb(0 0 0 / 55%);
 }
 
 .ter-theme .ter-badge-ok {
-  border-color: rgb(139 195 74 / 55%);
-  background-color: rgb(78 122 40 / 42%);
-  color: #d6f5b0;
+  border-color: rgb(139 195 74 / 60%);
+  background-color: rgb(72 118 36 / 48%);
+  color: #dcf7b8;
 }
 .ter-theme .ter-badge-warn {
-  border-color: rgb(240 168 72 / 55%);
-  background-color: rgb(140 92 28 / 42%);
-  color: #ffe0b0;
+  border-color: rgb(240 168 72 / 60%);
+  background-color: rgb(136 88 24 / 48%);
+  color: #ffe4b8;
 }
 .ter-theme .ter-badge-danger {
-  border-color: rgb(224 108 90 / 60%);
-  background-color: rgb(140 59 44 / 48%);
-  color: #ffd2c8;
+  border-color: rgb(224 108 90 / 65%);
+  background-color: rgb(136 55 40 / 55%);
+  color: #ffd6cc;
 }
 .ter-theme .ter-badge-info {
-  border-color: rgb(127 200 220 / 55%);
-  background-color: rgb(48 96 116 / 42%);
-  color: #cdeef7;
+  border-color: rgb(127 200 220 / 60%);
+  background-color: rgb(44 92 112 / 48%);
+  color: #d2f1f8;
 }
 .ter-theme .ter-badge-neutral {
-  border-color: rgb(201 162 39 / 35%);
+  border-color: rgb(201 162 39 / 40%);
   color: var(--ter-muted);
 }
 
@@ -284,29 +203,19 @@
 
 .ter-theme .ter-input {
   width: 100%;
-  padding: 9px 12px;
-  /* A brass edge, not a black one: #6b4a35 against rgb(0 0 0 / 50%)
-     composites to 1.23:1, so the control had no perceptible boundary
-     (WCAG 1.4.11). --ter-outline is 3.27:1 on the panel and 12.4:1 on the
-     page background. */
-  border: 1px solid var(--ter-outline);
+  padding: 10px 12px;
+  border: 1px solid rgb(0 0 0 / 55%);
   border-radius: var(--ter-radius);
-  background-color: var(--ter-panel-deep);
-  background-image: linear-gradient(
-    180deg,
-    rgb(0 0 0 / 35%) 0%,
-    rgb(0 0 0 / 12%) 55%,
-    rgb(255 255 255 / 3%) 100%
-  );
+  background-color: rgb(26 16 10 / 88%);
   box-shadow:
-    inset 0 2px 4px rgb(0 0 0 / 45%),
+    inset 0 2px 5px rgb(0 0 0 / 55%),
     0 1px 0 rgb(255 255 255 / 6%);
   color: var(--ter-body);
   font-family: var(--ter-font-body);
   font-size: 14px;
   /* No `outline: none` here: it shares specificity with
-     `.ter-theme :focus-visible` and, being declared later, used to win and
-     swallow the 2px gold focus ring. */
+     `.ter-theme :focus-visible` and, being declared later, wins and swallows
+     the 2px gold focus ring. */
 }
 
 .ter-theme .ter-input::placeholder {
@@ -316,8 +225,8 @@
 .ter-theme .ter-input:focus-visible {
   border-color: var(--ter-gold);
   box-shadow:
-    inset 0 2px 4px rgb(0 0 0 / 45%),
-    0 0 0 1px rgb(240 200 96 / 45%);
+    inset 0 2px 5px rgb(0 0 0 / 55%),
+    0 0 0 1px rgb(240 200 96 / 50%);
 }
 
 .ter-theme .ter-input:disabled {
@@ -326,96 +235,37 @@
 }
 
 /* ====================================================================
-   Header: logo wordmark + navigation plank
+   Header: official wordmark + navigation bar
    ==================================================================== */
 
 .ter-theme .ter-header {
   position: sticky;
   top: 0;
   z-index: 20;
-  padding: 14px 16px 10px;
+  padding: 12px 16px 8px;
   background: linear-gradient(
     180deg,
-    rgb(10 10 10 / 78%) 0%,
-    rgb(10 10 10 / 52%) 70%,
+    rgb(10 10 10 / 80%) 0%,
+    rgb(10 10 10 / 50%) 72%,
     rgb(10 10 10 / 0%) 100%
   );
   backdrop-filter: blur(3px);
 }
 
-/* Self-drawn wordmark: no official logo art is used or shipped. */
-.ter-theme .ter-wordmark {
-  font-family: var(--ter-font-display);
-  font-size: 34px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  line-height: 1;
-  background: linear-gradient(
-    180deg,
-    #f6e3a8 0%,
-    #d9b45c 42%,
-    #b9832f 78%,
-    #96691f 100%
-  );
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  filter: drop-shadow(0 2px 0 rgb(0 0 0 / 70%))
-    drop-shadow(0 0 1px rgb(0 0 0 / 90%));
-}
+/* ====================================================================
+   Navigation
+   ==================================================================== */
 
-.ter-theme .ter-wordmark-sub {
-  font-size: 12px;
-  font-weight: 400;
-  letter-spacing: 0.34em;
-  color: var(--ter-muted);
-  text-transform: uppercase;
-}
-
-/* The plank. Official nav is one continuous wooden bar with knot ends. */
 .ter-theme .ter-nav {
   position: relative;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  border: 1px solid var(--ter-outline);
-  border-radius: var(--ter-radius);
-  background-color: var(--ter-panel);
-  background-image:
-    var(--ter-tex-grain-coarse),
-    linear-gradient(
-      180deg,
-      var(--ter-panel-hi) 0%,
-      var(--ter-panel) 42%,
-      var(--ter-panel-lo) 100%
-    );
-  background-blend-mode: overlay, normal;
-  box-shadow:
-    inset 0 0 0 1px var(--ter-inset),
-    inset 0 1px 0 rgb(255 255 255 / 12%),
-    inset 0 -2px 0 rgb(0 0 0 / 30%),
-    0 3px 0 rgb(0 0 0 / 45%);
-}
-
-/* Knot end-caps, echoing the ⊗ ornaments flanking the official bar. */
-.ter-theme .ter-nav::before,
-.ter-theme .ter-nav::after {
-  content: "";
-  position: absolute;
-  top: 50%;
-  width: 26px;
-  height: 26px;
-  margin-top: -13px;
-  background-image: var(--ter-tex-knot);
-  background-size: contain;
-  background-repeat: no-repeat;
-  opacity: 0.9;
-}
-
-.ter-theme .ter-nav::before {
-  left: -13px;
-}
-.ter-theme .ter-nav::after {
-  right: -13px;
+  justify-content: center;
+  gap: 2px;
+  /* No overflow container: a scrollbar under the bar was the single most
+     obvious defect. Items shrink/wrap instead. */
+  overflow: visible;
 }
 
 .ter-theme .ter-navitem {
@@ -423,60 +273,68 @@
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  padding: 15px 14px;
-  border: 0;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid transparent;
+  border-radius: var(--ter-radius);
   background: transparent;
-  color: #e8dcc0;
+  color: #efe4c8;
   font-family: var(--ter-font-body);
   font-size: 13px;
   font-weight: 600;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   text-decoration: none;
-  text-shadow: 0 1px 0 rgb(0 0 0 / 60%);
+  white-space: nowrap;
+  text-shadow: 0 1px 0 rgb(0 0 0 / 65%);
   cursor: pointer;
   transition: color 90ms linear, background-color 90ms linear;
-  white-space: nowrap;
 }
 
 .ter-theme .ter-navitem:hover {
   color: #fff;
-  background-color: rgb(255 255 255 / 6%);
+  background-color: rgb(255 255 255 / 8%);
 }
 
-/* Active tab reads as a lit plate, like the official bar's highlighted item. */
+/* Active nav item uses the official nav button art. Nine-slicing keeps the
+   left stud circular while the bar stretches to the label width. */
 .ter-theme .ter-navitem-active {
   color: #fff8e0;
-  background-image: linear-gradient(
-    180deg,
-    rgb(255 255 255 / 12%) 0%,
-    rgb(255 255 255 / 3%) 40%,
-    rgb(0 0 0 / 14%) 100%
-  );
-  box-shadow: inset 0 -3px 0 var(--ter-gold);
+  border: 0;
+  border-style: solid;
+  border-width: 0 0 0 40px;
+  border-image-source: var(--ter-nav-item);
+  border-image-slice: 0 0 0 40 fill;
+  border-image-width: 0 0 0 40px;
+  border-image-repeat: stretch;
+  background-color: transparent;
+  background-image: none;
+  padding-left: 10px;
+  min-height: 40px;
+  filter: brightness(1.1);
 }
 
 .ter-theme .ter-nav-divider {
   width: 1px;
   align-self: stretch;
-  margin: 6px 2px;
+  margin: 6px 3px;
   background: linear-gradient(
     180deg,
     rgb(0 0 0 / 0%),
-    rgb(0 0 0 / 45%) 50%,
+    rgb(0 0 0 / 50%) 50%,
     rgb(0 0 0 / 0%)
   );
-  box-shadow: 1px 0 0 rgb(255 255 255 / 8%);
+  box-shadow: 1px 0 0 rgb(255 255 255 / 10%);
 }
 
 /* ====================================================================
-   Tabs (in-page, wooden plate strip)
+   Tabs
    ==================================================================== */
 
 .ter-theme .ter-tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
-  overflow-x: auto;
   border-bottom: 1px solid rgb(201 162 39 / 30%);
 }
 
@@ -496,19 +354,15 @@
 
 .ter-theme .ter-tab:hover {
   color: var(--ter-body);
-  background-color: rgb(255 255 255 / 5%);
+  background-color: rgb(255 255 255 / 6%);
 }
 
 .ter-theme .ter-tab-active {
-  border-color: rgb(201 162 39 / 40%);
-  background-color: var(--ter-panel);
-  background-image: linear-gradient(
-    180deg,
-    var(--ter-panel-hi),
-    var(--ter-panel) 60%
-  );
+  border-color: rgb(201 162 39 / 45%);
+  background-image: var(--ter-title-plate);
+  background-size: 100% 100%;
   color: var(--ter-heading);
-  box-shadow: inset 0 2px 0 var(--ter-gold);
+  text-shadow: 0 1px 0 rgb(0 0 0 / 55%);
 }
 
 /* ====================================================================
@@ -517,18 +371,9 @@
 
 .ter-theme .ter-stat {
   position: relative;
-  padding: 14px 16px;
-  border: 1px solid var(--ter-outline);
-  border-radius: var(--ter-radius);
-  background-color: var(--ter-panel);
-  background-image:
-    var(--ter-tex-grain),
-    linear-gradient(180deg, rgb(255 255 255 / 6%), rgb(0 0 0 / 20%));
-  background-blend-mode: overlay, normal;
-  box-shadow:
-    inset 0 0 0 3px rgb(0 0 0 / 16%),
-    inset 0 0 0 4px var(--ter-inset),
-    0 3px 0 rgb(0 0 0 / 45%);
+  padding: 16px 18px;
+  border: 0;
+  box-shadow: 0 3px 0 rgb(0 0 0 / 45%);
 }
 
 .ter-theme .ter-stat-value {
@@ -536,7 +381,7 @@
   font-size: 24px;
   font-weight: 600;
   color: var(--ter-heading);
-  text-shadow: 0 1px 0 rgb(0 0 0 / 50%);
+  text-shadow: 0 1px 0 rgb(0 0 0 / 55%);
 }
 
 /* ====================================================================
@@ -547,7 +392,7 @@
   position: fixed;
   inset: 0;
   z-index: 50;
-  background-color: rgb(0 0 0 / 68%);
+  background-color: rgb(0 0 0 / 70%);
   backdrop-filter: blur(2px);
 }
 
@@ -556,31 +401,17 @@
   top: 50%;
   left: 50%;
   z-index: 51;
-  width: min(92vw, 520px);
+  width: min(92vw, 560px);
   max-height: 86vh;
   overflow-y: auto;
   transform: translate(-50%, -50%);
-  padding: 20px;
-  border: 1px solid var(--ter-outline);
-  border-radius: var(--ter-radius);
-  background-color: var(--ter-panel);
-  background-image:
-    var(--ter-tex-grain),
-    linear-gradient(
-      180deg,
-      rgb(255 255 255 / 7%) 0%,
-      rgb(0 0 0 / 0%) 55%,
-      rgb(0 0 0 / 24%) 100%
-    );
-  background-blend-mode: overlay, normal;
-  box-shadow:
-    inset 0 0 0 3px rgb(0 0 0 / 18%),
-    inset 0 0 0 4px var(--ter-inset),
-    0 10px 0 rgb(0 0 0 / 40%);
+  padding: 22px;
+  border: 0;
+  box-shadow: 0 10px 0 rgb(0 0 0 / 45%);
 }
 
 /* ====================================================================
-   List row (players, worlds, deliveries)
+   Rows
    ==================================================================== */
 
 .ter-theme .ter-row {
@@ -589,18 +420,18 @@
   justify-content: space-between;
   gap: 14px;
   padding: 12px 14px;
-  border: 1px solid rgb(0 0 0 / 30%);
+  border: 1px solid rgb(0 0 0 / 35%);
   border-radius: var(--ter-radius);
-  background-color: rgb(0 0 0 / 18%);
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 5%);
+  background-color: rgb(0 0 0 / 22%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 6%);
 }
 
 .ter-theme .ter-row:hover {
-  background-color: rgb(255 255 255 / 5%);
+  background-color: rgb(255 255 255 / 6%);
 }
 
 /* ====================================================================
-   Icon tile (pixel sprite in a recessed socket)
+   Icon tile — the referenced icon in a recessed socket
    ==================================================================== */
 
 .ter-theme .ter-icontile {
@@ -610,11 +441,11 @@
   width: 36px;
   height: 36px;
   flex-shrink: 0;
-  border: 1px solid var(--ter-outline);
+  border: 1px solid rgb(0 0 0 / 50%);
   border-radius: var(--ter-radius);
-  background-color: var(--ter-panel-deep);
+  background-color: rgb(26 16 10 / 78%);
   box-shadow:
-    inset 0 2px 3px rgb(0 0 0 / 55%),
+    inset 0 2px 4px rgb(0 0 0 / 55%),
     0 1px 0 rgb(255 255 255 / 7%);
   color: var(--ter-gold);
 }

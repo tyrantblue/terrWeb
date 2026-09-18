@@ -19,17 +19,17 @@ import TerIcon, { type TerIconName } from '../ui/TerIcon'
 type KitTab = 'controls' | 'data' | 'type' | 'icons'
 
 const KIT_TABS: Array<{ id: KitTab; label: string; icon: TerIconName }> = [
-  { id: 'controls', label: 'Controls', icon: 'gear' },
-  { id: 'data', label: 'Data display', icon: 'grid' },
+  { id: 'controls', label: 'Controls', icon: 'settings' },
+  { id: 'data', label: 'Data display', icon: 'dashboard' },
   { id: 'type', label: 'Typography', icon: 'console' },
   { id: 'icons', label: 'Icon set', icon: 'heart' },
 ]
 
 const ICON_NAMES: TerIconName[] = [
-  'grid', 'world', 'players', 'console', 'shield', 'gear', 'server',
-  'restart', 'save', 'sun', 'moon', 'upload', 'trash', 'refresh',
-  'lock', 'check', 'cross', 'warning', 'play', 'heart', 'eye', 'clock',
-  'search',
+  'dashboard', 'worlds', 'players', 'console', 'operations', 'settings',
+  'server', 'restart', 'power', 'save', 'sun', 'moon', 'upload', 'download',
+  'trash', 'refresh', 'lock', 'check', 'cross', 'warning', 'info', 'play',
+  'heart', 'eye', 'clock', 'search', 'bell',
 ]
 
 export default function KitchenSink() {
@@ -41,7 +41,7 @@ export default function KitchenSink() {
     <div className="space-y-6">
       <TerSectionHeading
         title="Component kit"
-        icon="grid"
+        icon="dashboard"
         description="Every piece of the Terraria-style chrome in one place, so the visual language can be signed off before any real page is ported."
       />
 
@@ -139,7 +139,7 @@ export default function KitchenSink() {
             <hr className="ter-divider my-5" />
 
             <div className="flex flex-wrap items-center gap-3">
-              <TerTitlePlate icon="shield">Title plate</TerTitlePlate>
+              <TerTitlePlate icon="operations">Title plate</TerTitlePlate>
               <TerTitlePlate icon="server">Another section</TerTitlePlate>
             </div>
           </TerPanel>
@@ -152,7 +152,7 @@ export default function KitchenSink() {
             <TerStat label="Status" value="Online" icon="heart" tone="ok" />
             <TerStat label="Players" value="3 / 255" icon="players" />
             <TerStat label="Version" value="1.4.5.8" icon="server" />
-            <TerStat label="World" value="gogogo" icon="world" hint="12.4 MB · modified 2h ago" />
+            <TerStat label="World" value="gogogo" icon="worlds" hint="12.4 MB · modified 2h ago" />
           </div>
 
           <TerPanel mossTop className="p-5">
@@ -189,7 +189,7 @@ export default function KitchenSink() {
           <TerPanel className="p-5">
             <h3 className="ter-h3 mb-4">Empty state</h3>
             <TerEmpty
-              icon="world"
+              icon="worlds"
               title="No worlds found."
               hint="Upload a .wld file to get started."
             />

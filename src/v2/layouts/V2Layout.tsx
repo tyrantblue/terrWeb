@@ -4,46 +4,45 @@ import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useServerStatus } from '../../context/serverStatus'
 import { useApiMeta } from '../../context/apiMeta'
 import {
+  CHROME_PRESETS,
+  DEFAULT_ASSETS,
+  ICON_PRESETS,
+  chromeUrl,
+  effectiveChromeBase,
   loadAssetSettings,
-  resolveAssets,
   saveAssetSettings,
-  ORIGINAL_BACKGROUND,
-  toCssBackground,
   type AssetSettings,
-  type AssetSource,
+  type ChromeSlot,
+  type ChromeSource,
+  type IconSource,
+  type TerIconName,
 } from '../theme/assets'
-import TerIcon, { type TerIconName } from '../ui/TerIcon'
 import { TerAssetsContext } from '../theme/assetContext'
-import {
-  TerBadge,
-  TerButton,
-  TerDialog,
-  TerInput,
-} from '../ui'
+import TerIcon from '../ui/TerIcon'
+import { TerBadge, TerButton, TerDialog, TerInput } from '../ui'
 import { cx } from '../ui/cx'
 
 /**
- * The official site's own font stack. Injected here rather than imported
- * globally so that visiting the old UI never pulls Google Fonts.
+ * The official site's own font stack, injected here rather than imported
+ * globally so visiting the classic UI never pulls Google Fonts.
  */
 const FONT_HREF =
   'https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;500;600;700&family=Merriweather:wght@300&display=swap'
 
 const NAV: Array<{ to: string; label: string; icon: TerIconName; end?: boolean }> = [
-  { to: '/next', label: 'Dashboard', icon: 'grid', end: true },
-  { to: '/next/worlds', label: 'Worlds', icon: 'world' },
+  { to: '/next', label: 'Dashboard', icon: 'dashboard', end: true },
+  { to: '/next/worlds', label: 'Worlds', icon: 'worlds' },
   { to: '/next/players', label: 'Players', icon: 'players' },
   { to: '/next/console', label: 'Console', icon: 'console' },
-  { to: '/next/operations', label: 'Operations', icon: 'shield' },
-  { to: '/next/settings', label: 'Settings', icon: 'gear' },
+  { to: '/next/operations', label: 'Operations', icon: 'operations' },
+  { to: '/next/settings', label: 'Settings', icon: 'settings' },
 ]
 
 function useOfficialFonts() {
   useEffect(() => {
     const id = 'ter-fonts'
-    const existing = document.getElementById(id)
 
-    if (existing) {
+    if (document.getElementById(id)) {
       return
     }
 
@@ -66,46 +65,6 @@ function useOfficialFonts() {
   }, [])
 }
 
-/**
- * A remote backdrop is just a URL, and CSS reports nothing when it fails to
- * load: the page would quietly lose its artwork and render flat black. The
- * official preset is documented to break whenever Re-Logic redeploys (the
- * filenames are content-hashed), so probe it and fall back to the
- * self-drawn scene instead of silently losing the backdrop.
- */
-function useBrokenBackground(value: string) {
-  // Records which URL failed rather than a boolean, so switching the source
-  // back to a working value clears the state without a synchronous
-  // `setState` in the effect body (which cascades renders).
-  const [failedValue, setFailedValue] = useState<string | null>(null)
-
-  const candidate = value.trim()
-
-  useEffect(() => {
-    if (!/^https?:\/\//i.test(candidate)) {
-      return
-    }
-
-    const probe = new Image()
-    let disposed = false
-
-    probe.onerror = () => {
-      if (!disposed) {
-        setFailedValue(candidate)
-      }
-    }
-
-    probe.src = candidate
-
-    return () => {
-      disposed = true
-      probe.onerror = null
-    }
-  }, [candidate])
-
-  return failedValue !== null && failedValue === candidate
-}
-
 export default function V2Layout() {
   useOfficialFonts()
 
@@ -113,27 +72,39 @@ export default function V2Layout() {
   const [pickerOpen, setPickerOpen] = useState(false)
   const location = useLocation()
 
-  const resolved = useMemo(() => resolveAssets(assets), [assets])
-
   const update = useCallback((next: AssetSettings) => {
     setAssets(next)
     saveAssetSettings(next)
   }, [])
 
-  // Icons read the chosen artwork source from context: the components that
-  // render them are several levels below the shell, and the previous
-  // prop-drilling never happened, so the picker silently only changed the
-  // backdrop.
-  const iconAssets = useMemo(
-    () => ({ source: assets.source, iconBase: resolved.iconBase }),
-    [assets.source, resolved.iconBase],
+  const contextValue = useMemo(
+    () => ({ assets, update }),
+    [assets, update],
   )
 
-  const backgroundFailed = useBrokenBackground(resolved.background)
+  // Resolved through the helpers so an empty "custom" value can never turn
+  // into a same-origin request for someone else's filenames.
+  const chromeBase = effectiveChromeBase(assets)
 
-  const background = backgroundFailed
-    ? ORIGINAL_BACKGROUND
-    : toCssBackground(resolved.background) || ORIGINAL_BACKGROUND
+  // Chrome artwork resolved to CSS custom properties, so the stylesheet can
+  // reference runtime-configured URLs without knowing where they live.
+  const chromeVars = useMemo(() => {
+    const cssUrl = (slot: ChromeSlot) =>
+      `url("${chromeUrl(chromeBase, slot)}")`
+
+    return {
+      '--ter-background': cssUrl('background'),
+      '--ter-panel-top': cssUrl('panelTop'),
+      '--ter-panel-middle': cssUrl('panelMiddle'),
+      '--ter-panel-bottom': cssUrl('panelBottom'),
+      '--ter-grass': cssUrl('grass'),
+      '--ter-title-plate': cssUrl('titlePlate'),
+      '--ter-nav-item': cssUrl('navItem'),
+      '--ter-divider': cssUrl('divider'),
+    } as React.CSSProperties
+  }, [chromeBase])
+
+  const logoUrl = chromeUrl(chromeBase, 'logo')
 
   const { status, connectivity } = useServerStatus()
   const { meta } = useApiMeta()
@@ -154,248 +125,290 @@ export default function V2Layout() {
         ? 'API Unreachable'
         : 'Connecting'
 
-  const shell = (
-    <div className="ter-theme">
-      <div
-        className="ter-bg"
-        style={{ ['--ter-bg-image' as string]: background }}
-      />
-
-      <div className="ter-shell">
-        <header className="ter-header">
-          <div className="mx-auto flex max-w-[var(--ter-max-w)] flex-col items-center gap-3">
-            <NavLink
-              to="/next"
-              className="flex flex-col items-center no-underline"
-            >
-              <span className="ter-wordmark">TERRARIA</span>
-              <span className="ter-wordmark-sub">Server Panel</span>
-            </NavLink>
-
-            <div className="flex w-full items-center justify-center gap-3 px-5">
-              <nav className="ter-nav overflow-x-auto" aria-label="Sections">
-                {NAV.map((item, index) => (
-                  <span key={item.to} className="flex items-center">
-                    {index > 0 && <span className="ter-nav-divider" />}
-                    <NavLink
-                      to={item.to}
-                      end={item.end}
-                      className={({ isActive }) =>
-                        cx('ter-navitem', isActive && 'ter-navitem-active')
-                      }
-                    >
-                      <TerIcon name={item.icon} size={14} />
-                      {item.label}
-                    </NavLink>
-                  </span>
-                ))}
-              </nav>
-
-              <button
-                type="button"
-                className="ter-iconbtn"
-                title="Artwork source"
-                aria-label="Artwork source"
-                onClick={() => setPickerOpen(true)}
-              >
-                <TerIcon name="eye" size={15} />
-              </button>
-            </div>
-          </div>
-        </header>
-
-        <main className="mx-auto w-full max-w-[var(--ter-max-w)] flex-1 px-4 pb-14 pt-6">
-          {/* A plate, not just a text-shadow: the status strip sits over the
-              brightest part of the backdrop. */}
-          <div className="ter-plate ter-on-bg mb-5 flex flex-wrap items-center justify-between gap-3 px-3 py-2.5">
-            <div className="flex items-center gap-3">
-              <TerBadge tone={statusTone} icon="heart">
-                {statusLabel}
-              </TerBadge>
-              {status && (
-                <span className="ter-small">
-                  {status.players.online}/{status.max_players ?? '—'} online
-                  {status.version ? ` · ${status.version}` : ''}
-                </span>
-              )}
-            </div>
-
-            <div className="flex items-center gap-2">
-              <span className="ter-faint">
-                {meta ? `API ${meta.api_version}` : 'API —'}
-              </span>
-              <NavLink to="/" className="ter-button ter-button-ghost no-underline">
-                Classic UI
-              </NavLink>
-            </div>
-          </div>
-
-          <Outlet context={{ assets, update }} />
-        </main>
-
-        <footer className="relative z-[1] border-t border-[rgb(201_162_39_/_25%)] bg-[rgb(0_0_0_/_80%)] px-4 py-4">
-          <div className="ter-faint mx-auto flex max-w-[var(--ter-max-w)] flex-wrap items-center justify-between gap-2">
-            <span>
-              Terraria-style theme (v2 preview) ·{' '}
-              {assets.source === 'original'
-                ? 'self-drawn artwork'
-                : `artwork: ${assets.source}`}
-              {' · '}
-              <span className="ter-mono">route {location.pathname}</span>
-            </span>
-            <span>
-              Terraria is developed by Re-Logic. This panel is independent.
-            </span>
-          </div>
-        </footer>
-      </div>
-
-      <ArtworkSourceDialog
-        open={pickerOpen}
-        onOpenChange={setPickerOpen}
-        settings={assets}
-        onChange={update}
-        backgroundFailed={backgroundFailed}
-      />
-    </div>
-  )
-
   return (
-    <TerAssetsContext.Provider value={iconAssets}>
-      {shell}
+    <TerAssetsContext.Provider value={contextValue}>
+      <div className="ter-theme" style={chromeVars}>
+        <div className="ter-bg" />
+
+        <div className="ter-shell">
+          <header className="ter-header">
+            <div className="mx-auto flex max-w-[var(--ter-max-w)] flex-col items-center gap-2">
+              <NavLink to="/next" className="flex flex-col items-center no-underline">
+                <img
+                  className="ter-logo"
+                  src={logoUrl}
+                  alt="Terraria"
+                  width={186}
+                  height={62}
+                />
+                <span className="ter-wordmark-sub mt-1">Server Panel</span>
+              </NavLink>
+
+              <div className="flex w-full flex-wrap items-center justify-center gap-3">
+                <nav className="ter-nav" aria-label="Sections">
+                  {NAV.map((item, index) => (
+                    <span key={item.to} className="flex items-center">
+                      {index > 0 && <span className="ter-nav-divider" />}
+                      <NavLink
+                        to={item.to}
+                        end={item.end}
+                        className={({ isActive }) =>
+                          cx('ter-navitem', isActive && 'ter-navitem-active')
+                        }
+                      >
+                        <TerIcon name={item.icon} size={15} />
+                        {item.label}
+                      </NavLink>
+                    </span>
+                  ))}
+                </nav>
+
+                <button
+                  type="button"
+                  className="ter-iconbtn"
+                  title="Artwork source"
+                  aria-label="Artwork source"
+                  onClick={() => setPickerOpen(true)}
+                >
+                  <TerIcon name="eye" size={16} />
+                </button>
+              </div>
+            </div>
+          </header>
+
+          <main className="mx-auto w-full max-w-[var(--ter-max-w)] flex-1 px-4 pb-14 pt-6">
+            <div className="ter-on-bg mb-5 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <TerBadge tone={statusTone} icon="heart">
+                  {statusLabel}
+                </TerBadge>
+                {status && (
+                  <span className="ter-small">
+                    {status.players.online}/{status.max_players ?? '—'} online
+                    {status.version ? ` · ${status.version}` : ''}
+                  </span>
+                )}
+              </div>
+
+              <div className="flex items-center gap-3">
+                <span className="ter-faint">
+                  {meta ? `API ${meta.api_version}` : 'API —'}
+                </span>
+                <NavLink to="/" className="ter-navitem no-underline">
+                  Classic UI
+                </NavLink>
+              </div>
+            </div>
+
+            <Outlet />
+          </main>
+
+          <footer className="relative z-[1] border-t border-[rgb(201_162_39_/_25%)] bg-[rgb(0_0_0_/_45%)] px-4 py-4">
+            <div className="ter-faint mx-auto flex max-w-[var(--ter-max-w)] flex-wrap items-center justify-between gap-2">
+              <span>
+                Terraria-style theme (v2 preview) · artwork referenced at runtime
+                · <span className="ter-mono">route {location.pathname}</span>
+              </span>
+              <span>
+                Terraria is developed by Re-Logic. This panel is independent.
+              </span>
+            </div>
+          </footer>
+        </div>
+
+        <ArtworkSourceDialog
+          open={pickerOpen}
+          onOpenChange={setPickerOpen}
+          settings={assets}
+          onChange={update}
+        />
+      </div>
     </TerAssetsContext.Provider>
   )
 }
-
-const SOURCE_LABELS: Array<{ id: AssetSource; label: string; note: string }> = [
-  {
-    id: 'original',
-    label: 'Self-drawn (default)',
-    note: 'Generated SVG backdrop and the built-in pixel sprite. Nothing external is loaded.',
-  },
-  {
-    id: 'official',
-    label: 'terraria.org (runtime)',
-    note: "Loads Re-Logic's artwork directly from terraria.org. Nothing is bundled or redistributed, but their filenames are hashed so links can break when they redeploy.",
-  },
-  {
-    id: 'custom',
-    label: 'Custom URLs',
-    note: 'Point at a local mirror or your own artwork.',
-  },
-]
 
 function ArtworkSourceDialog({
   open,
   onOpenChange,
   settings,
   onChange,
-  backgroundFailed,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   settings: AssetSettings
   onChange: (next: AssetSettings) => void
-  /** True when the chosen backdrop URL did not load and the drawn scene is in use. */
-  backgroundFailed: boolean
 }) {
+  const usingOfficial = settings.chromeSource === 'official'
+  const usingPixelarticons = settings.iconSource === 'pixelarticons'
+
+  /**
+   * Selecting a source never edits the URL: "custom" keeps whatever is in
+   * use so the chrome does not vanish while the field is still empty, and
+   * the field is seeded with a working value to edit from.
+   */
+  const pickChrome = (id: ChromeSource) =>
+    onChange({
+      ...settings,
+      chromeSource: id,
+      chromeBase: settings.chromeBase.trim() || DEFAULT_ASSETS.chromeBase,
+    })
+
+  const pickIcons = (id: IconSource) =>
+    onChange({
+      ...settings,
+      iconSource: id,
+      iconTemplate:
+        settings.iconTemplate.trim() || DEFAULT_ASSETS.iconTemplate,
+    })
+
   return (
     <TerDialog
       open={open}
       onOpenChange={onOpenChange}
       title="Artwork source"
-      description="Where the theme gets its backdrop and icons. Changes are stored locally in this browser."
+      description="The theme draws nothing itself — every image is referenced at runtime. Changes are stored locally in this browser."
       footer={
-        <TerButton variant="ghost" onClick={() => onOpenChange(false)}>
-          Close
-        </TerButton>
+        <>
+          <TerButton
+            variant="ghost"
+            icon="restart"
+            onClick={() => onChange(DEFAULT_ASSETS)}
+          >
+            Reset
+          </TerButton>
+          <TerButton variant="gold" onClick={() => onOpenChange(false)}>
+            Done
+          </TerButton>
+        </>
       }
     >
-      {backgroundFailed && (
-        <div className="ter-panel-inset mt-4 px-3 py-2">
-          <span className="ter-small">
-            That backdrop URL did not load, so the self-drawn scene is being
-            shown instead. The official filenames change whenever terraria.org
-            redeploys.
-          </span>
-        </div>
-      )}
+      <div className="mt-4 space-y-4">
+        <SourceGroup
+          title="Panel & backdrop"
+          presets={CHROME_PRESETS.map((preset) => ({
+            id: preset.id,
+            label: preset.label,
+            note: preset.note,
+            active: settings.chromeSource === preset.id,
+            apply: () => pickChrome(preset.id),
+          }))}
+        />
 
-      <div className="mt-4 space-y-2">
-        {SOURCE_LABELS.map((option) => (
-          <label
-            key={option.id}
-            className={cx(
-              'ter-panel-inset flex cursor-pointer gap-3 p-3',
-              settings.source === option.id && 'outline outline-1 outline-[var(--ter-gold)]',
-            )}
-          >
-            <input
-              type="radio"
-              name="asset-source"
-              checked={settings.source === option.id}
-              onChange={() => onChange({ ...settings, source: option.id })}
-              className="mt-1 accent-[#d9b45c]"
-            />
-            <span>
-              <span className="ter-body block font-semibold">
-                {option.label}
-              </span>
-              <span className="ter-faint mt-0.5 block leading-5">
-                {option.note}
-              </span>
-            </span>
-          </label>
-        ))}
+        {!usingOfficial && (
+          <ChromeFields settings={settings} onChange={onChange} />
+        )}
+
+        <SourceGroup
+          title="Icon set"
+          presets={ICON_PRESETS.map((preset) => ({
+            id: preset.id,
+            label: preset.label,
+            note: preset.note,
+            active: settings.iconSource === preset.id,
+            apply: () => pickIcons(preset.id),
+          }))}
+        />
+
+        {!usingPixelarticons && (
+          <IconFields settings={settings} onChange={onChange} />
+        )}
       </div>
-
-      {/* Mounted only for the custom source, so the draft state starts from
-          the saved values without an effect syncing them. */}
-      {settings.source === 'custom' && (
-        <CustomUrlFields settings={settings} onChange={onChange} />
-      )}
     </TerDialog>
   )
 }
 
-function CustomUrlFields({
+function SourceGroup({
+  title,
+  presets,
+}: {
+  title: string
+  presets: Array<{
+    id: string
+    label: string
+    note: string
+    active: boolean
+    apply: () => void
+  }>
+}) {
+  return (
+    <div>
+      <div className="ter-small mb-2 font-semibold">{title}</div>
+      <div className="space-y-2">
+        {presets.map((preset) => (
+          <button
+            key={preset.id}
+            type="button"
+            onClick={preset.apply}
+            className={cx(
+              'ter-panel-inset block w-full p-3 text-left',
+              preset.active && 'outline outline-1 outline-[var(--ter-gold)]',
+            )}
+          >
+            <span className="ter-body block font-semibold">{preset.label}</span>
+            <span className="ter-faint mt-0.5 block leading-5">
+              {preset.note}
+            </span>
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function ChromeFields({
   settings,
   onChange,
 }: {
   settings: AssetSettings
   onChange: (next: AssetSettings) => void
 }) {
-  const [draft, setDraft] = useState(settings.custom)
+  const [draft, setDraft] = useState(settings.chromeBase)
 
   return (
-    <div className="mt-4 space-y-3">
+    <div className="mt-3 flex items-end gap-2">
       <TerInput
-        id="ter-custom-bg"
-        label="Background image URL"
-        value={draft.background}
-        onChange={(value) =>
-          setDraft((current) => ({ ...current, background: value }))
-        }
-        placeholder="https://…/overworld.jpg"
-      />
-      <TerInput
-        id="ter-custom-icons"
-        label="Icon base URL (optional)"
-        value={draft.iconBase}
-        onChange={(value) =>
-          setDraft((current) => ({ ...current, iconBase: value }))
-        }
+        id="ter-chrome-base"
+        label="Chrome base URL"
+        value={draft}
+        onChange={setDraft}
         placeholder="https://…/static/media"
       />
-      <div className="flex justify-end">
-        <TerButton
-          variant="gold"
-          icon="check"
-          onClick={() => onChange({ ...settings, custom: draft })}
-        >
-          Use these URLs
-        </TerButton>
-      </div>
+      <TerButton
+        variant="gold"
+        icon="check"
+        onClick={() => onChange({ ...settings, chromeBase: draft })}
+      >
+        Use
+      </TerButton>
+    </div>
+  )
+}
+
+function IconFields({
+  settings,
+  onChange,
+}: {
+  settings: AssetSettings
+  onChange: (next: AssetSettings) => void
+}) {
+  const [draft, setDraft] = useState(settings.iconTemplate)
+
+  return (
+    <div className="mt-3 flex items-end gap-2">
+      <TerInput
+        id="ter-icon-template"
+        label="Icon URL template ({name})"
+        value={draft}
+        onChange={setDraft}
+        placeholder="https://…/svg/{name}.svg"
+      />
+      <TerButton
+        variant="gold"
+        icon="check"
+        onClick={() => onChange({ ...settings, iconTemplate: draft })}
+      >
+        Use
+      </TerButton>
     </div>
   )
 }

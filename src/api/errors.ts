@@ -56,9 +56,39 @@ const ERROR_COPY: Record<string, ErrorCopy> = {
   internal_error: {
     summary: 'The API hit an internal error.',
   },
+  // The four codes API 2.1.0 introduces. The panel can meet all of them, and
+  // without copy they would surface as the backend's bare message.
+  client_outdated: {
+    summary: 'This panel build is older than the API allows.',
+    hint: 'Refresh the page to load the current build; a cached copy is still running.',
+  },
+  unauthorized: {
+    summary: 'The API requires a token for this action.',
+    hint: 'The backend is running with TERRARIA_API_TOKEN set. This panel build has no way to send one, so write actions will keep failing until the token is removed or the panel is put behind a proxy that adds it.',
+  },
+  too_many_requests: {
+    summary: 'The API is rate limiting this panel.',
+    hint: 'Wait a moment before retrying; the response says how long in Retry-After.',
+  },
+  operation_not_found: {
+    summary: 'That operation is no longer tracked by the API.',
+    hint: 'Operations live in API memory, so a restart erases them. Check the current server state before retrying.',
+  },
 }
 
 const STATUS_FALLBACK: Record<number, ErrorCopy> = {
+  401: {
+    summary: 'The API requires a token for this action.',
+    hint: 'The backend is running with TERRARIA_API_TOKEN set, and this panel cannot send one.',
+  },
+  426: {
+    summary: 'This panel build is older than the API allows.',
+    hint: 'Refresh the page to load the current build.',
+  },
+  429: {
+    summary: 'The API is rate limiting this panel.',
+    hint: 'Wait a moment before retrying.',
+  },
   502: { summary: 'The API could not reach the game server.' },
   503: {
     summary: 'The API is temporarily unavailable.',

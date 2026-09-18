@@ -117,7 +117,11 @@ function isMissingOperation(error: ApiError) {
     return false
   }
 
+  // API 2.1.0 answers with a dedicated `operation_not_found`; the other two
+  // checks keep older deployments working (a generic `not_found`, or the
+  // message-only shape from before that code existed).
   return (
+    error.code === 'operation_not_found' ||
     error.code === 'not_found' ||
     /operation/i.test(error.message)
   )

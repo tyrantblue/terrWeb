@@ -1,869 +1,105 @@
 # Terraria Server Web Panel
 
-一个用于管理 **Terraria Dedicated Server** 的轻量级 Web 管理面板。
+用于管理 Terraria Dedicated Server 的轻量级 Web 面板。项目是独立前端，基于 React、TypeScript、Vite 和 Tailwind CSS，并通过 Terraria Server API v1 与服务器通信。
 
-项目采用前后端分离架构：
+## 功能
 
-- **Frontend**：React + TypeScript + Vite + Tailwind CSS
-- **Backend**：FastAPI
-- **Server**：Terraria Dedicated Server 1.4.5.8
-- **Container**：Docker / Docker Compose
-- **Console**：WebSocket 实时输出
-- **World Management**：支持世界上传、切换与自动重启
+- 服务器状态、版本、端口、世界时间、种子和在线人数
+- 玩家列表、广播消息、踢出与封禁
+- 实时控制台、结构化日志、断线重连与游标补偿
+- 世界上传进度、切换进度、手动备份与删除
+- 持久化服务器配置与低玩家上限二次确认
+- 备份恢复、定时任务、连接守卫和事件通知
+- API 版本握手与兼容性提示
 
-项目主要面向个人 Terraria 服务器管理使用。
+## 技术栈
 
----
+- React 19
+- TypeScript 6
+- Vite 8
+- Tailwind CSS 4
+- React Router
+- Radix UI
+- Lucide React
+- Cloudflare Workers Static Assets
 
-## Features
+## 开发环境
 
-### Server
-
-- 查看服务器运行状态
-- 查看 Terraria 版本
-- 查看服务器端口
-- 查看最大玩家数
-- 查看当前在线玩家
-- 查看当前游戏时间
-- 查看世界 Seed
-- 修改服务器配置
-- 保存世界
-- 调整游戏时间
-  - Dawn
-  - Noon
-  - Dusk
-  - Midnight
-
-- Settling liquids
-- 修改 MOTD
-- 修改服务器密码
-- 查看服务器版本
-
-### Player Management
-
-- 查看在线玩家
-- Kick 玩家
-- Ban 玩家
-- 向服务器广播消息
-
-### World Management
-
-- 查看服务器上的世界
-- 自动识别当前使用的世界
-- 上传 `.wld` 世界文件
-- 切换世界
-- 切换世界前自动保存当前世界
-- 修改 Terraria Server 配置
-- 自动重启 Terraria Server
-
-### Console
-
-- 实时查看 Terraria Server 控制台输出
-- WebSocket 实时连接
-- 查看最近的服务器日志
-- 发送 Terraria Server Console Command
-
-### Web UI
-
-- Dark Mode 管理面板
-- Responsive Layout
-- 自定义确认弹窗
-- 操作状态反馈
-- Server / Players / Worlds / Console 等独立页面
-
----
-
-# Architecture
-
-项目整体结构如下：
-
-```text
-                        ┌─────────────────────┐
-                        │      Browser        │
-                        │                     │
-                        │   React Frontend    │
-                        └──────────┬──────────┘
-                                   │
-                            HTTPS / WebSocket
-                                   │
-                                   ▼
-                        ┌─────────────────────┐
-                        │    FastAPI API      │
-                        │                     │
-                        │  Terraria API       │
-                        └──────────┬──────────┘
-                                   │
-                          Docker Volume / FIFO
-                                   │
-                                   ▼
-                        ┌─────────────────────┐
-                        │ Terraria Dedicated  │
-                        │      Server         │
-                        └─────────────────────┘
-```
-
-后端服务器上的 Docker 服务：
-
-```text
-/opt/terraria
-│
-├── docker-compose.yml
-├── Dockerfile
-├── start.sh
-│
-├── config/
-│   └── serverconfig.txt
-│
-├── worlds/
-│   ├── *.wld
-│   └── ...
-│
-├── control/
-│   ├── command.fifo
-│   └── output.log
-│
-└── api/
-    ├── Dockerfile
-    ├── pyproject.toml
-    ├── uv.lock
-    └── app/
-```
-
-其中：
-
-```text
-terraria
-    ↓
-Terraria Dedicated Server
-
-terraria-api
-    ↓
-FastAPI
-    ↓
-command.fifo
-    ↓
-Terraria Server
-```
-
----
-
-# Requirements
-
-## Frontend
-
-建议环境：
-
-- Node.js 20+
-- pnpm 10+
-
-当前开发环境使用：
-
-```text
-Node.js 22
-pnpm 11
-```
-
-## Backend
-
-服务器：
-
-- Ubuntu 24.04 LTS
-- Docker
-- Docker Compose
-
-Terraria：
-
-```text
-Terraria 1.4.5.8
-```
-
----
-
-# Backend Deployment
-
-## 1. Install Docker
-
-在 Ubuntu Server 上安装 Docker。
-
-确认：
+建议使用 Node.js 22+ 与 pnpm 11+。
 
 ```bash
-docker --version
-docker compose version
-```
-
-能够正常输出版本信息。
-
----
-
-## 2. Create Project Directory
-
-例如：
-
-```bash
-mkdir -p /opt/terraria
-cd /opt/terraria
-```
-
-项目最终结构：
-
-```text
-/opt/terraria/
-├── docker-compose.yml
-├── Dockerfile
-├── start.sh
-├── config/
-├── worlds/
-├── control/
-└── api/
-```
-
----
-
-## 3. Terraria Dockerfile
-
-根目录 `Dockerfile`：
-
-```dockerfile
-FROM ubuntu:24.04
-
-RUN apt-get update \
-    && apt-get install -y wget unzip ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
-
-WORKDIR /tmp
-
-RUN wget -O terraria-server.zip \
-        https://terraria.org/api/download/pc-dedicated-server/terraria-server-1458.zip \
-    && unzip terraria-server.zip \
-    && mkdir -p /terraria-server \
-    && cp -r 1458/Linux/* /terraria-server/ \
-    && chmod +x /terraria-server/TerrariaServer.bin.x86* \
-    && rm -rf /tmp/*
-
-WORKDIR /terraria-server
-
-ENTRYPOINT ["/terraria-server/TerrariaServer.bin.x86_64"]
-```
-
----
-
-# Terraria Server Configuration
-
-`config/serverconfig.txt` 用于配置 Terraria Server。
-
-例如：
-
-```ini
-world=/worlds/WSD.wld
-autocreate=2
-difficulty=0
-maxplayers=8
-port=7777
-motd=Terraria Server
-```
-
-世界文件放在：
-
-```text
-/opt/terraria/worlds/
-```
-
-例如：
-
-```text
-/opt/terraria/worlds/WSD.wld
-/opt/terraria/worlds/幻想乡.wld
-```
-
----
-
-# Backend API
-
-Backend 使用 FastAPI。
-
-主要 API：
-
-```text
-GET  /api/health
-
-GET  /api/server/status
-GET  /api/server/players
-GET  /api/server/console
-
-POST /api/server/command
-POST /api/server/playing
-POST /api/server/version
-POST /api/server/port
-POST /api/server/maxplayers
-POST /api/server/save
-POST /api/server/settle
-
-POST /api/server/time/dawn
-POST /api/server/time/noon
-POST /api/server/time/dusk
-POST /api/server/time/midnight
-
-POST /api/server/say
-POST /api/server/kick
-POST /api/server/ban
-POST /api/server/motd
-POST /api/server/password
-
-GET  /api/world/list
-POST /api/world/upload
-POST /api/world/switch
-```
-
-WebSocket：
-
-```text
-WS /api/server/ws
-```
-
----
-
-# Start Backend
-
-进入 Terraria 项目目录：
-
-```bash
-cd /opt/terraria
-```
-
-启动：
-
-```bash
-docker compose up -d --build
-```
-
-查看容器：
-
-```bash
-docker compose ps
-```
-
-应该可以看到：
-
-```text
-terraria
-terraria-api
-```
-
-查看 Terraria 日志：
-
-```bash
-docker compose logs -f terraria
-```
-
-查看 API 日志：
-
-```bash
-docker compose logs -f terraria-api
-```
-
----
-
-# Backend Health Check
-
-启动后可以检查：
-
-```text
-GET /api/health
-```
-
-例如：
-
-```bash
-curl http://127.0.0.1:8080/api/health
-```
-
-正常情况下返回：
-
-```json
-{
-  "status": "ok",
-  "service": "terraria-api"
-}
-```
-
----
-
-# Ports
-
-默认使用：
-
-| Port   | Protocol | Purpose         |
-| ------ | -------- | --------------- |
-| `7777` | TCP      | Terraria Server |
-| `7777` | UDP      | Terraria Server |
-| `8080` | TCP      | FastAPI         |
-
-玩家连接 Terraria：
-
-```text
-SERVER_IP:7777
-```
-
-Web Panel 通过：
-
-```text
-https://your-api-domain
-```
-
-访问 API。
-
----
-
-# Frontend
-
-Frontend 位于：
-
-```text
-terraria-panel/
-```
-
-安装依赖：
-
-```powershell
 pnpm install
-```
-
-启动开发服务器：
-
-```powershell
 pnpm dev
 ```
 
-默认：
+生产构建：
 
-```text
-http://localhost:5173
-```
-
----
-
-# Frontend API Configuration
-
-当前 API 地址配置在：
-
-```text
-src/api/client.ts
-```
-
-当前配置：
-
-```ts
-const API_BASE_URL = "https://terraria-api.tyrantblue.xyz";
-```
-
-WebSocket 地址位于：
-
-```text
-src/api/console.ts
-```
-
-当前：
-
-```ts
-wss://terraria-api.tyrantblue.xyz/api/server/ws
-```
-
-如果更换 API 域名，需要同时修改这两个位置。
-
----
-
-# Build Frontend
-
-生产环境构建：
-
-```powershell
+```bash
 pnpm build
-```
-
-构建结果位于：
-
-```text
-dist/
 ```
 
 本地预览：
 
-```powershell
+```bash
 pnpm preview
 ```
 
----
+## API 配置
 
-# Frontend Deployment
+默认 API 地址位于 `src/api/client.ts`：
 
-Frontend 是标准 Vite 项目，可以部署到：
+```ts
+export const API_BASE_URL = 'https://terraria-api.tyrantblue.xyz'
+```
 
-- Netlify
-- Vercel
-- Cloudflare Pages
-- GitHub Pages
-- 其他支持静态网站部署的平台
+面板请求会携带 `X-Client-Version`，并在启动时调用 `/api/meta` 检查 API 兼容性。可以在构建时使用 `VITE_APP_VERSION` 覆盖面板版本。
 
-例如 Netlify：
+后端实现、部署、环境变量和接口契约由独立后端仓库维护，本仓库不再复制后端说明：
 
-```text
-Build command:
+- [后端仓库](https://github.com/tyrantblue/terraria-server)
+- [API 文档](https://terraria-api.tyrantblue.xyz/docs)
+- [OpenAPI 契约](https://terraria-api.tyrantblue.xyz/openapi.json)
+- [API 变更记录](https://github.com/tyrantblue/terraria-server/blob/main/docs/api/CHANGELOG.md)
+- [前端迁移指南](https://github.com/tyrantblue/terraria-server/blob/main/docs/api/frontend-migration.md)
+
+接口类型或行为有疑问时，以 OpenAPI 契约和后端仓库文档为准。
+
+## 页面结构
+
+| 页面 | 用途 |
+| --- | --- |
+| Dashboard | 服务器概览、保存世界和时间控制 |
+| Worlds | 世界上传、切换、备份和删除 |
+| Players | 在线玩家、连接地址、踢出、封禁和广播 |
+| Console | 实时日志与允许的服务器命令 |
+| Operations | 备份恢复、定时任务、连接守卫和通知 |
+| Settings | 持久化服务器配置 |
+
+## 部署
+
+项目包含 Cloudflare Wrangler 配置。部署命令会先执行生产构建：
+
+```bash
+pnpm deploy
+```
+
+也可以将 `pnpm build` 生成的 `dist/` 部署到任意静态托管平台。SPA 托管需要把未知路径回退到 `index.html`。
+
+## 安全
+
+该面板可以发送服务器命令、修改配置、恢复备份和管理连接守卫。生产环境应在 API 与面板前配置身份认证和访问控制，例如 Cloudflare Access、VPN 或受限反向代理。
+
+不要把具备管理能力的 API 无保护地暴露到公网。
+
+## 验证
+
+```bash
 pnpm build
-
-Publish directory:
-dist
+pnpm lint
 ```
 
-如果使用 GitHub 自动部署，只需要连接 GitHub Repository。
-
----
-
-# Git
-
-项目使用 Git 进行版本管理。
-
-克隆：
-
-```bash
-git clone https://github.com/tyrantblue/tyrantblue-terrWeb.git
-```
-
-进入 frontend：
-
-```bash
-cd terraria-panel
-```
-
-安装依赖：
-
-```bash
-pnpm install
-```
-
-开发：
-
-```bash
-pnpm dev
-```
-
-提交：
-
-```bash
-git add .
-git commit -m "your message"
-git push origin main
-```
-
----
-
-# Updating the Backend
-
-修改 Backend 后，在服务器执行：
-
-```bash
-cd /opt/terraria
-
-docker compose up -d --build
-```
-
-如果只修改 API：
-
-```bash
-docker compose up -d --build terraria-api
-```
-
-查看状态：
-
-```bash
-docker compose ps
-```
-
----
-
-# Updating the Terraria Server
-
-如果修改 Terraria Server Dockerfile 或服务器相关配置：
-
-```bash
-docker compose up -d --build terraria
-```
-
-查看日志：
-
-```bash
-docker compose logs -f terraria
-```
-
----
-
-# World Backup
-
-世界文件位于：
-
-```text
-/opt/terraria/worlds/
-```
-
-建议定期备份整个 `worlds` 目录：
-
-```bash
-cp -r /opt/terraria/worlds /opt/terraria/worlds.backup
-```
-
-或者：
-
-```bash
-tar -czf worlds-backup.tar.gz \
-    /opt/terraria/worlds
-```
-
-**不要只依赖 Web Panel 的世界切换功能作为备份方案。**
-
----
-
-# Important Notes
-
-## 1. Server Access
-
-当前项目没有实现用户登录和权限系统。
-
-因此：
-
-> **不要直接把管理 API 暴露到公网而不做任何访问控制。**
-
-建议通过以下方式限制访问：
-
-- Firewall
-- Reverse Proxy
-- VPN
-- Cloudflare Access
-- 内网访问
-
-尤其是：
-
-```text
-/api/server/command
-```
-
-具有直接向 Terraria Server 发送命令的能力。
-
----
-
-## 2. CORS
-
-开发阶段目前允许：
-
-```text
-Access-Control-Allow-Origin: *
-```
-
-生产环境建议根据实际 Frontend 域名限制 Origin。
-
-例如：
-
-```text
-https://your-panel.example.com
-```
-
----
-
-## 3. World Switching
-
-切换世界的流程：
-
-```text
-点击 Switch
-      ↓
-确认
-      ↓
-保存当前世界
-      ↓
-修改 serverconfig.txt
-      ↓
-发送 exit
-      ↓
-Docker 自动重启 Terraria
-      ↓
-等待服务器重新启动
-      ↓
-完成
-```
-
-因此切换世界不是瞬时操作。
-
-服务器重启期间 Frontend 会等待 Backend 返回结果。
-
----
-
-## 4. Terraria Console
-
-Console 使用 WebSocket：
-
-```text
-Browser
-   ↓
-WebSocket
-   ↓
-FastAPI
-   ↓
-output.log
-```
-
-服务器日志：
-
-```text
-/opt/terraria/control/output.log
-```
-
-FIFO：
-
-```text
-/opt/terraria/control/command.fifo
-```
-
-用于向 Terraria Server 发送命令。
-
----
-
-# Project Structure
-
-Frontend：
-
-```text
-terraria-panel/
-├── src/
-│   ├── api/
-│   │   ├── client.ts
-│   │   ├── console.ts
-│   │   └── world.ts
-│   │
-│   ├── components/
-│   │   └── ConfirmDialog.tsx
-│   │
-│   ├── pages/
-│   │   ├── Dashboard.tsx
-│   │   ├── Console.tsx
-│   │   ├── Players.tsx
-│   │   ├── Worlds.tsx
-│   │   └── Settings.tsx
-│   │
-│   ├── App.tsx
-│   ├── main.tsx
-│   └── index.css
-│
-├── package.json
-├── vite.config.ts
-└── tsconfig.json
-```
-
-Backend：
-
-```text
-api/
-├── app/
-│   ├── main.py
-│   │
-│   ├── routers/
-│   │   ├── server.py
-│   │   ├── world.py
-│   │   └── console.py
-│   │
-│   ├── services/
-│   │   ├── terraria.py
-│   │   └── config.py
-│   │
-│   └── models/
-│
-├── Dockerfile
-├── pyproject.toml
-└── uv.lock
-```
-
----
-
-# Development Workflow
-
-推荐开发流程：
-
-```text
-Frontend 修改
-      ↓
-pnpm dev
-      ↓
-本地测试
-      ↓
-git add .
-      ↓
-git commit
-      ↓
-git push
-      ↓
-Frontend 自动部署
-```
-
-Backend：
-
-```text
-修改 API
-      ↓
-提交代码
-      ↓
-服务器更新代码
-      ↓
-docker compose up -d --build
-      ↓
-检查 API
-      ↓
-检查 Terraria
-```
-
----
-
-# Current Status
-
-目前已经实现：
-
-- [x] Dashboard
-- [x] Server Status
-- [x] Player Management
-- [x] World Management
-- [x] World Upload
-- [x] World Switching
-- [x] Console
-- [x] WebSocket Console
-- [x] Server Commands
-- [x] Custom Confirmation Dialog
-- [x] Docker Deployment
-- [x] FastAPI Backend
-- [x] React Frontend
-
----
-
-# Roadmap
-
-计划中的功能包括：
-
-- [ ] Server Start / Stop / Restart
-- [ ] 更完善的 Server Settings
-- [ ] 自动世界备份
-- [ ] 世界删除
-- [ ] 世界下载
-- [ ] Console 日志搜索
-- [ ] Server Resource Monitoring
-- [ ] CPU / RAM / Network 状态
-- [ ] 更完善的错误处理
-- [ ] Authentication
-- [ ] Permission Management
-- [ ] HTTPS / Reverse Proxy 部署方案
-- [ ] 多服务器管理
-
----
-
-# License
+## License
 
 This project is intended primarily for personal use.
 
-Terraria is developed by Re-Logic.
-
-This project is an independent server management panel and is not affiliated with or endorsed by Re-Logic.
+Terraria is developed by Re-Logic. This project is independent and is not affiliated with or endorsed by Re-Logic.

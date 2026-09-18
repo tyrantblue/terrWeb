@@ -49,6 +49,9 @@ export default function Console() {
   const socketRef =
     useRef<WebSocket | null>(null)
 
+  const cursorRef =
+    useRef<number | undefined>(undefined)
+
 
   async function handleSubmit(
     event: FormEvent,
@@ -104,119 +107,123 @@ export default function Console() {
 
   useEffect(() => {
     let disposed = false
+    let reconnectTimer: number | undefined
 
-    getConsole()
-      .then((response) => {
-        if (!disposed) {
-          setLines((current) => {
-            const byOffset = new Map(
-              [...response.lines, ...current].map(
-                (line) => [line.offset, line],
-              ),
-            )
+    function appendLines(newLines: ConsoleLine[]) {
+      setLines((current) => {
+        const byOffset = new Map(
+          [...current, ...newLines].map(
+            (line) => [line.offset, line],
+          ),
+        )
 
-            return Array.from(byOffset.values())
-              .sort((left, right) =>
-                left.offset - right.offset,
-              )
-              .slice(-1000)
-          })
-        }
+        return Array.from(byOffset.values())
+          .sort((left, right) =>
+            left.offset - right.offset,
+          )
+          .slice(-1000)
       })
+    }
+
+    async function catchUp() {
+      const response = await getConsole(
+        cursorRef.current,
+      )
+      cursorRef.current = response.cursor
+      appendLines(response.lines)
+    }
+
+    function connect() {
+      if (disposed) return
+
+      const socket = createConsoleWebSocket()
+      socketRef.current = socket
+
+      socket.onopen = () => {
+        if (disposed) return
+        setConnected(true)
+        setError(false)
+        void catchUp().catch(console.error)
+      }
+
+      socket.onmessage = (event) => {
+        if (disposed) return
+
+        let message: {
+          type?: string
+          cursor?: number
+          offset?: number
+          ts?: number | null
+          kind?: string
+          text?: string
+        }
+
+        try {
+          message = JSON.parse(String(event.data))
+        } catch {
+          return
+        }
+
+        if (
+          message.type === 'hello' &&
+          typeof message.cursor === 'number'
+        ) {
+          if (cursorRef.current === undefined) {
+            cursorRef.current = message.cursor
+          }
+          return
+        }
+
+        if (
+          message.type !== 'console.line' ||
+          typeof message.text !== 'string'
+        ) return
+
+        const newLine: ConsoleLine = {
+          offset: message.offset ?? Date.now(),
+          ts: message.ts ?? null,
+          kind: message.kind ?? 'output',
+          text: message.text,
+        }
+
+        cursorRef.current = Math.max(
+          cursorRef.current ?? 0,
+          newLine.offset,
+        )
+        appendLines([newLine])
+      }
+
+      socket.onerror = () => {
+        if (!disposed) setError(true)
+      }
+
+      socket.onclose = () => {
+        if (disposed) return
+        setConnected(false)
+        reconnectTimer = window.setTimeout(
+          connect,
+          2000,
+        )
+      }
+    }
+
+    catchUp()
       .catch((loadError) => {
         console.error(
           'Failed to load console history:',
           loadError,
         )
       })
-
-    const socket =
-      createConsoleWebSocket()
-
-    socketRef.current = socket
-
-
-    socket.onopen = () => {
-      if (disposed) {
-        return
-      }
-
-      setConnected(true)
-      setError(false)
-    }
-
-
-    socket.onmessage = (
-      event,
-    ) => {
-      if (disposed) {
-        return
-      }
-
-      let message: {
-        type?: string
-        offset?: number
-        kind?: string
-        text?: string
-      }
-
-      try {
-        message = JSON.parse(
-          String(event.data),
-        )
-      } catch {
-        return
-      }
-
-      if (
-        message.type !== 'console.line' ||
-        typeof message.text !== 'string'
-      ) {
-        return
-      }
-
-      const newLine: ConsoleLine = {
-        offset: message.offset ?? Date.now(),
-        kind: message.kind ?? 'output',
-        text: message.text,
-      }
-
-      setLines((previous) => {
-        if (previous.some(
-          (line) => line.offset === newLine.offset,
-        )) {
-          return previous
-        }
-
-        const combined = [...previous, newLine]
-
-        return combined.slice(-1000)
-      })
-    }
-
-
-    socket.onerror = () => {
-      if (disposed) {
-        return
-      }
-
-      setError(true)
-    }
-
-
-    socket.onclose = () => {
-      if (disposed) {
-        return
-      }
-
-      setConnected(false)
-    }
+      .finally(connect)
 
 
     return () => {
       disposed = true
+      if (reconnectTimer !== undefined) {
+        window.clearTimeout(reconnectTimer)
+      }
 
-      socket.close()
+      socketRef.current?.close()
 
       socketRef.current = null
     }

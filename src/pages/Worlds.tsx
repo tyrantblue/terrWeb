@@ -11,14 +11,18 @@ import {
   Activity,
   ArrowRightLeft,
   Check,
+  DatabaseBackup,
   FileArchive,
   Globe,
   RefreshCw,
+  Trash2,
   Upload,
   X,
 } from 'lucide-react'
 
 import {
+  backupWorld,
+  deleteWorld,
   getWorlds,
   switchWorld,
   uploadWorldWithProgress,
@@ -88,11 +92,21 @@ export default function Worlds() {
   const [confirmWorld, setConfirmWorld] =
     useState<World | null>(null)
 
+  const [deleteTarget, setDeleteTarget] =
+    useState<World | null>(null)
 
-  async function loadWorlds() {
+  const [worldAction, setWorldAction] =
+    useState<string | null>(null)
+
+
+  async function loadWorlds(
+    clearMessage = true,
+  ) {
     try {
       setLoading(true)
-      setMessage('')
+      if (clearMessage) {
+        setMessage('')
+      }
 
       const data =
         await getWorlds()
@@ -190,7 +204,7 @@ export default function Worlds() {
         `Uploaded ${file.name}`,
       )
 
-      await loadWorlds()
+      await loadWorlds(false)
 
     } catch (error) {
       console.error(error)
@@ -266,7 +280,7 @@ export default function Worlds() {
 
       setConfirmWorld(null)
 
-      await loadWorlds()
+      await loadWorlds(false)
 
     } catch (error) {
       console.error(error)
@@ -294,8 +308,67 @@ export default function Worlds() {
   }
 
 
+  async function handleBackup(world: World) {
+    try {
+      setWorldAction(`backup:${world.file}`)
+      setMessage(`Backing up ${world.file}...`)
+      const operation = await backupWorld(world.file)
+
+      await waitForOperation(
+        operation.operation_id,
+        (current) => {
+          setMessage(
+            current.message ??
+              `Backing up ${world.file}... ${current.progress ?? 0}%`,
+          )
+        },
+      )
+
+      setMessage(`Backup created for ${world.file}.`)
+    } catch (error) {
+      console.error(error)
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : 'Failed to back up world.',
+      )
+    } finally {
+      setWorldAction(null)
+    }
+  }
+
+
+  async function handleDelete() {
+    if (!deleteTarget) return
+
+    try {
+      setWorldAction(`delete:${deleteTarget.file}`)
+      await deleteWorld(deleteTarget.file)
+      setMessage(`Deleted ${deleteTarget.file}.`)
+      setDeleteTarget(null)
+      await loadWorlds(false)
+    } catch (error) {
+      console.error(error)
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : 'Failed to delete world.',
+      )
+    } finally {
+      setWorldAction(null)
+    }
+  }
+
+
   useEffect(() => {
-    loadWorlds()
+    const initialLoad = window.setTimeout(
+      loadWorlds,
+      0,
+    )
+
+    return () => {
+      window.clearTimeout(initialLoad)
+    }
   }, [])
 
 
@@ -420,7 +493,7 @@ export default function Worlds() {
 
           {/* Refresh */}
           <button
-            onClick={loadWorlds}
+            onClick={() => void loadWorlds()}
             disabled={
               loading ||
               uploading ||
@@ -568,7 +641,10 @@ export default function Worlds() {
                 world={activeWorld}
                 switching={switching}
                 switchProgress={switchProgress}
+                action={worldAction}
                 onSwitch={handleSwitchRequest}
+                onBackup={handleBackup}
+                onDelete={setDeleteTarget}
               />
 
             </section>
@@ -613,7 +689,10 @@ export default function Worlds() {
                       world={world}
                       switching={switching}
                       switchProgress={switchProgress}
+                      action={worldAction}
                       onSwitch={handleSwitchRequest}
+                      onBackup={handleBackup}
+                      onDelete={setDeleteTarget}
                     />
                   ),
                 )}
@@ -642,6 +721,26 @@ export default function Worlds() {
         cancelText="Cancel"
         onConfirm={handleConfirmSwitch}
         loading={switching !== null}
+      />
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && worldAction === null) {
+            setDeleteTarget(null)
+          }
+        }}
+        title="Delete world"
+        description={
+          deleteTarget
+            ? `Permanently delete ${deleteTarget.file}? This cannot be undone. Create a backup first if you may need it later.`
+            : ''
+        }
+        confirmText="Delete"
+        onConfirm={handleDelete}
+        loading={
+          worldAction?.startsWith('delete:') ?? false
+        }
       />
 
 
@@ -907,14 +1006,20 @@ function WorldCard({
   world,
   switching,
   switchProgress,
+  action,
   onSwitch,
+  onBackup,
+  onDelete,
 }: {
   world: World
   switching: string | null
   switchProgress: number
+  action: string | null
   onSwitch: (
     world: World,
   ) => void
+  onBackup: (world: World) => void
+  onDelete: (world: World) => void
 }) {
   const isActive =
     world.active
@@ -1102,7 +1207,7 @@ function WorldCard({
       </div>
 
 
-      {/* Action */}
+      <div className="mt-4 grid grid-cols-[1fr_auto_auto] gap-2">
       <button
         onClick={() =>
           onSwitch(world)
@@ -1113,7 +1218,7 @@ function WorldCard({
         }
         className={[
           'ui-button',
-          'mt-4 w-full',
+          'w-full',
 
           isActive
             ? [
@@ -1165,6 +1270,44 @@ function WorldCard({
             : 'Switch to this world'}
 
       </button>
+
+      <button
+        type="button"
+        onClick={() => onBackup(world)}
+        disabled={
+          switching !== null || action !== null
+        }
+        className="ui-icon-button"
+        title={`Back up ${world.file}`}
+      >
+        <DatabaseBackup
+          size={16}
+          className={
+            action === `backup:${world.file}`
+              ? 'animate-pulse'
+              : ''
+          }
+        />
+      </button>
+
+      <button
+        type="button"
+        onClick={() => onDelete(world)}
+        disabled={
+          isActive ||
+          switching !== null ||
+          action !== null
+        }
+        className="ui-icon-button text-red-400"
+        title={
+          isActive
+            ? 'The active world cannot be deleted'
+            : `Delete ${world.file}`
+        }
+      >
+        <Trash2 size={16} />
+      </button>
+      </div>
 
     </div>
   )

@@ -1,6 +1,25 @@
 export const API_BASE_URL = 'https://terraria-api.tyrantblue.xyz'
 export const CLIENT_VERSION =
-  import.meta.env.VITE_APP_VERSION ?? '1.0.0'
+  import.meta.env.VITE_APP_VERSION ?? '1.4.0'
+export const EXPECTED_API_VERSION = '1.4.0'
+
+export interface ApiMeta {
+  api_version: string
+  min_client_version: string
+  server_version: string
+  capabilities: string[]
+  deprecations: Array<{
+    path: string
+    replacement: string
+    since: string
+    sunset: string
+  }>
+  links: {
+    openapi?: string
+    docs?: string
+    changelog?: string
+  }
+}
 
 interface ApiErrorBody {
   detail?: string
@@ -69,4 +88,32 @@ export async function apiFetch<T>(
   }
 
   return response.json() as Promise<T>
+}
+
+export function getApiMeta() {
+  return apiFetch<ApiMeta>('/api/meta')
+}
+
+export function compareVersions(
+  left: string,
+  right: string,
+) {
+  const leftParts = left.split('.').map(Number)
+  const rightParts = right.split('.').map(Number)
+  const length = Math.max(
+    leftParts.length,
+    rightParts.length,
+  )
+
+  for (let index = 0; index < length; index += 1) {
+    const difference =
+      (leftParts[index] ?? 0) -
+      (rightParts[index] ?? 0)
+
+    if (difference !== 0) {
+      return difference
+    }
+  }
+
+  return 0
 }

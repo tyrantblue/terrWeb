@@ -57,10 +57,14 @@ export default function Settings() {
     useState<number | null>(null)
 
 
-  async function loadSettings() {
+  async function loadSettings(
+    clearMessage = true,
+  ) {
     try {
       setLoading(true)
-      setMessage('')
+      if (clearMessage) {
+        setMessage('')
+      }
 
       const [data, config] =
         await Promise.all([
@@ -122,7 +126,7 @@ export default function Settings() {
         `Max players updated to ${value}.`,
       )
 
-      await loadSettings()
+      await loadSettings(false)
 
     } catch (error) {
       console.error(error)
@@ -162,7 +166,7 @@ export default function Settings() {
       setMessage(
         `Max players updated to ${value}.`,
       )
-      await loadSettings()
+      await loadSettings(false)
     } catch (error) {
       console.error(error)
       setMessage(
@@ -198,7 +202,7 @@ export default function Settings() {
         'MOTD updated successfully.',
       )
 
-      await loadSettings()
+      await loadSettings(false)
 
     } catch (error) {
       console.error(error)
@@ -253,7 +257,14 @@ export default function Settings() {
 
 
   useEffect(() => {
-    loadSettings()
+    const initialLoad = window.setTimeout(
+      loadSettings,
+      0,
+    )
+
+    return () => {
+      window.clearTimeout(initialLoad)
+    }
   }, [])
 
 
@@ -292,7 +303,7 @@ export default function Settings() {
 
 
         <button
-          onClick={loadSettings}
+          onClick={() => void loadSettings()}
           disabled={
             loading ||
             saving !== null

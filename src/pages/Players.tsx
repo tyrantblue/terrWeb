@@ -210,7 +210,10 @@ export default function Players() {
 
 
   useEffect(() => {
-    loadPlayers()
+    const initialLoad = window.setTimeout(
+      loadPlayers,
+      0,
+    )
 
     const timer = setInterval(
       loadPlayers,
@@ -218,6 +221,7 @@ export default function Players() {
     )
 
     return () => {
+      window.clearTimeout(initialLoad)
       clearInterval(timer)
     }
   }, [])

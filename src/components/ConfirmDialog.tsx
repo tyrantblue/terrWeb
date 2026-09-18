@@ -1,6 +1,7 @@
 
 import * as AlertDialog from '@radix-ui/react-alert-dialog'
 import { AlertTriangle } from 'lucide-react'
+import type { ReactNode } from 'react'
 
 
 interface ConfirmDialogProps {
@@ -15,6 +16,7 @@ interface ConfirmDialogProps {
 
   onConfirm: () => void
   loading?: boolean
+  children?: ReactNode
 }
 
 
@@ -27,6 +29,7 @@ export default function ConfirmDialog({
   cancelText = 'Cancel',
   onConfirm,
   loading = false,
+  children,
 }: ConfirmDialogProps) {
   function handleConfirm() {
     if (loading) {
@@ -113,6 +116,8 @@ export default function ConfirmDialog({
             </div>
 
           </div>
+
+          {children}
 
 
           {/* Actions */}

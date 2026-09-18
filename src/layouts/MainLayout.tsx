@@ -6,12 +6,14 @@ import {
   Globe,
   Users,
   Settings,
+  ShieldCheck,
 } from 'lucide-react'
 
 import {
   NavLink,
   Outlet,
 } from 'react-router-dom'
+import ApiCompatibilityBanner from '../components/ApiCompatibilityBanner'
 
 
 export default function MainLayout() {
@@ -27,20 +29,24 @@ export default function MainLayout() {
       {/* Sidebar */}
       <aside
         className={[
-          'fixed inset-y-0 left-0',
-          'z-20 w-64',
-          'border-r border-white/[0.07]',
+          'fixed bottom-0 left-0 right-0',
+          'z-20 h-16',
+          'border-t border-white/[0.07]',
           'bg-[#151719]',
+          'md:inset-y-0 md:right-auto',
+          'md:h-auto md:w-64',
+          'md:border-r md:border-t-0',
         ].join(' ')}
       >
 
         {/* Logo */}
         <div
           className={[
-            'flex h-16 items-center',
+            'hidden h-16 items-center',
             'gap-3',
             'border-b border-white/[0.07]',
             'px-5',
+            'md:flex',
           ].join(' ')}
         >
 
@@ -91,7 +97,7 @@ export default function MainLayout() {
 
 
         {/* Navigation */}
-        <nav className="space-y-1.5 p-3">
+        <nav className="grid h-full grid-cols-6 px-1 md:block md:h-auto md:space-y-1.5 md:p-3">
 
           <NavItem
             to="/"
@@ -128,6 +134,14 @@ export default function MainLayout() {
           />
 
           <NavItem
+            to="/operations"
+            icon={
+              <ShieldCheck size={18} />
+            }
+            label="Operations"
+          />
+
+          <NavItem
             to="/settings"
             icon={
               <Settings size={18} />
@@ -141,10 +155,11 @@ export default function MainLayout() {
         {/* Server status */}
         <div
           className={[
-            'absolute bottom-0',
+            'absolute bottom-0 hidden',
             'left-0 right-0',
             'border-t border-white/[0.07]',
             'p-4',
+            'md:block',
           ].join(' ')}
         >
 
@@ -200,7 +215,7 @@ export default function MainLayout() {
 
 
       {/* Main */}
-      <main className="ml-64 min-h-screen">
+      <main className="min-h-screen pb-16 md:ml-64 md:pb-0">
 
         {/* Header */}
         <header
@@ -210,7 +225,7 @@ export default function MainLayout() {
             'items-center justify-between',
             'border-b border-white/[0.07]',
             'bg-[#111315]/90',
-            'px-8',
+            'px-4 md:px-8',
             'backdrop-blur-xl',
           ].join(' ')}
         >
@@ -252,9 +267,11 @@ export default function MainLayout() {
 
         </header>
 
+        <ApiCompatibilityBanner />
+
 
         {/* Page content */}
-        <div className="p-6 lg:p-8">
+        <div className="p-4 md:p-6 lg:p-8">
 
           <div className="mx-auto max-w-[1440px]">
             <Outlet />
@@ -285,12 +302,15 @@ function NavItem({
       className={({ isActive }) =>
         [
           'group relative',
-          'flex w-full',
-          'items-center gap-3',
+          'flex h-full min-w-0 w-full',
+          'flex-col items-center justify-center gap-1',
           'rounded-[var(--ui-radius-control)]',
-          'px-3 py-2.5',
-          'text-sm',
+          'px-1 py-1.5',
+          'text-[10px]',
           'transition-all duration-150',
+          'md:h-auto md:flex-row md:justify-start',
+          'md:gap-3 md:px-3 md:py-2.5',
+          'md:text-sm',
 
           isActive
             ? [
@@ -311,10 +331,13 @@ function NavItem({
           {isActive && (
             <span
               className={[
-                'absolute left-0',
-                'h-5 w-0.5',
-                'rounded-r-full',
+                'absolute bottom-0',
+                'h-0.5 w-5',
+                'rounded-t-full',
                 'bg-emerald-400',
+                'md:bottom-auto md:left-0',
+                'md:h-5 md:w-0.5',
+                'md:rounded-r-full',
               ].join(' ')}
             />
           )}

@@ -2,6 +2,7 @@ import { API_BASE_URL, apiFetch } from './client'
 
 export interface ConsoleLine {
   offset: number
+  ts: number | null
   kind: string
   text: string
 }

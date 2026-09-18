@@ -54,6 +54,20 @@ export function switchWorld(file: string) {
   )
 }
 
+export function backupWorld(file: string) {
+  return apiFetch<OperationStart>(
+    `/api/v1/worlds/${encodeURIComponent(file)}/backup`,
+    { method: 'POST' },
+  )
+}
+
+export function deleteWorld(file: string) {
+  return apiFetch<void>(
+    `/api/v1/worlds/${encodeURIComponent(file)}`,
+    { method: 'DELETE' },
+  )
+}
+
 export function getOperation(id: string) {
   return apiFetch<Operation>(
     `/api/v1/operations/${encodeURIComponent(id)}`,

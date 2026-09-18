@@ -11,6 +11,7 @@ import Worlds from './pages/Worlds'
 import Console from './pages/Console'
 import Players from './pages/Players'
 import Settings from './pages/Settings'
+import Operations from './pages/Operations'
 
 
 function App() {
@@ -39,6 +40,11 @@ function App() {
           <Route
             path="/console"
             element={<Console />}
+          />
+
+          <Route
+            path="/operations"
+            element={<Operations />}
           />
 
           <Route

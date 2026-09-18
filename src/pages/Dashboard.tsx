@@ -108,7 +108,10 @@ export default function Dashboard() {
 
 
   useEffect(() => {
-    refresh()
+    const initialLoad = window.setTimeout(
+      refresh,
+      0,
+    )
 
     const timer = setInterval(
       refresh,
@@ -116,6 +119,7 @@ export default function Dashboard() {
     )
 
     return () => {
+      window.clearTimeout(initialLoad)
       clearInterval(timer)
     }
   }, [])

@@ -23,6 +23,8 @@ import {
   allowIp,
   banIp,
   classifyHeartbeatDetail,
+  NOTIFICATION_EVENTS,
+  NOTIFICATION_PROVIDERS,
   getBackups,
   getGuard,
   getNotifications,
@@ -31,17 +33,22 @@ import {
   removeAllowedIp,
   restoreBackup,
   runSchedule,
+  resetNotificationSettings,
   testNotifications,
   unbanIp,
+  updateNotificationSettings,
   type Backup,
   type BackupsResponse,
   type GuardResponse,
   type NotificationDelivery,
+  type NotificationQQUpdate,
+  type NotificationSettingsUpdate,
   type NotificationsResponse,
   type SchedulerResponse,
 } from '../api/operations'
 import { ApiError } from '../api/client'
 import { formatErrorReport } from '../api/errors'
+import { CAPABILITIES, useApiMeta } from '../context/apiMeta'
 import {
   runOperation,
   waitForOperation,
@@ -74,6 +81,13 @@ const tabs: Array<{
 export default function Operations() {
   const [activeTab, setActiveTab] = useState<OperationsTab>('backups')
   const heartbeat = useConsoleHeartbeat()
+
+  const { hasCapability } = useApiMeta()
+
+  // 2.2.0 added the write endpoints; older backends keep the tab read-only.
+  const canEditNotifications = hasCapability(
+    CAPABILITIES.notificationsSettings,
+  )
 
   // Aborts any in-flight operation wait when this page unmounts.
   const operationsAbort = useAbortOnUnmount()
@@ -289,6 +303,36 @@ export default function Operations() {
     if (succeeded) setGuardTarget(null)
   }
 
+  async function handleNotificationSave(
+    patch: NotificationSettingsUpdate,
+  ) {
+    try {
+      setAction('notification-save')
+      setNotifications(await updateNotificationSettings(patch))
+      setMessage('Notification target saved.')
+      return true
+    } catch (error) {
+      setMessage(formatErrorReport(error))
+      return false
+    } finally {
+      setAction('')
+    }
+  }
+
+  async function handleNotificationReset() {
+    try {
+      setAction('notification-reset')
+      setNotifications(await resetNotificationSettings())
+      setMessage('Reverted to the environment defaults.')
+      return true
+    } catch (error) {
+      setMessage(formatErrorReport(error))
+      return false
+    } finally {
+      setAction('')
+    }
+  }
+
   async function handleNotificationTest() {
     try {
       setAction('notification-test')
@@ -348,7 +392,18 @@ export default function Operations() {
         <GuardView guard={guard} loading={loading} action={action} onAction={handleGuardAction} onRemove={requestGuardRemoval} />
       )}
       {activeTab === 'notifications' && (
-        <NotificationsView notifications={notifications} loading={loading} testing={action === 'notification-test'} onTest={handleNotificationTest} />
+        <NotificationsView
+          notifications={notifications}
+          loading={loading}
+          testing={action === 'notification-test'}
+          canEdit={canEditNotifications}
+          saving={action === 'notification-save'}
+          resetting={action === 'notification-reset'}
+          busy={action !== ''}
+          onTest={handleNotificationTest}
+          onSave={handleNotificationSave}
+          onReset={handleNotificationReset}
+        />
       )}
 
       <ConfirmDialog
@@ -555,15 +610,441 @@ function GuardList({ title, empty, entries, action, onRemove }: { title: string;
   </div></section>
 }
 
-function NotificationsView({ notifications, loading, testing, onTest }: { notifications: NotificationsResponse | null; loading: boolean; testing: boolean; onTest: () => void }) {
+function NotificationsView({
+  notifications,
+  loading,
+  testing,
+  canEdit,
+  saving,
+  resetting,
+  busy,
+  onTest,
+  onSave,
+  onReset,
+}: {
+  notifications: NotificationsResponse | null
+  loading: boolean
+  testing: boolean
+  canEdit: boolean
+  saving: boolean
+  resetting: boolean
+  busy: boolean
+  onTest: () => void
+  onSave: (patch: NotificationSettingsUpdate) => Promise<boolean>
+  onReset: () => Promise<boolean>
+}) {
+  const [formKey, setFormKey] = useState(0)
+  const [confirmReset, setConfirmReset] = useState(false)
+
   if (loading && !notifications) return <EmptyState text="Loading notifications..." />
   if (!notifications) return <EmptyState text="Notification status is unavailable." />
+
+  const missing = notifications.missing ?? []
+
   return <div className="space-y-5">
-    <div className="ui-panel flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between"><div><div className="flex items-center gap-2"><StatusBadge ok={notifications.enabled} on="Enabled" off="Disabled" /><span className="text-sm text-gray-400">{notifications.format}</span></div><div className="mt-2 text-sm text-gray-600">{notifications.url || 'No webhook configured'}</div></div><button type="button" onClick={onTest} disabled={!notifications.enabled || testing} className="ui-button ui-button-accent"><Bell size={15} /> {testing ? 'Sending...' : 'Send test'}</button></div>
-    <section><h3 className="mb-2 text-sm font-medium text-gray-300">Recent deliveries</h3><div className="ui-scroll-region divide-y divide-white/[0.05] border-y border-white/[0.07] pr-1">
-      {notifications.deliveries.length ? notifications.deliveries.map((delivery) => <DeliveryRow key={`${delivery.ts}-${delivery.event}`} delivery={delivery} />) : <div className="py-6 text-center text-sm text-gray-600">No deliveries recorded.</div>}
-    </div></section>
+    <div className="ui-panel p-4">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusBadge ok={notifications.enabled} on="Enabled" off="Disabled" />
+            <span className="text-sm text-gray-400">{notifications.format}</span>
+            {/* env = still on NOTIFY_* defaults; file = saved from the panel */}
+            <span className="ui-status ui-status-neutral">
+              {notifications.source === 'file' ? 'Saved in panel' : 'Env defaults'}
+            </span>
+          </div>
+
+          <div className="mt-2 truncate text-sm text-gray-600">
+            {notifications.provider === 'none'
+              ? 'Notifications are switched off (credentials kept).'
+              : notifications.url || 'No webhook configured'}
+          </div>
+        </div>
+
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            type="button"
+            onClick={onTest}
+            disabled={!notifications.enabled || testing || busy}
+            className="ui-button ui-button-accent"
+          >
+            <Bell size={15} /> {testing ? 'Sending...' : 'Send test'}
+          </button>
+          {canEdit && (
+            <button
+              type="button"
+              onClick={() => setConfirmReset(true)}
+              disabled={notifications.source !== 'file' || busy}
+              title={notifications.source === 'file'
+                ? 'Delete the saved config and fall back to NOTIFY_* env vars'
+                : 'Already using the environment defaults'}
+              className="ui-button ui-button-secondary"
+            >
+              <RotateCcw size={15} /> {resetting ? 'Resetting...' : 'Reset to env'}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {missing.length > 0 && (
+        <div className="mt-3 rounded-lg border border-amber-500/15 bg-amber-500/[0.05] px-3 py-2 text-xs text-amber-300">
+          Still missing before delivery can work:{' '}
+          <span className="font-mono">{missing.join(', ')}</span>
+        </div>
+      )}
+    </div>
+
+    {canEdit ? (
+      <NotificationSettingsForm
+        key={formKey}
+        notifications={notifications}
+        saving={saving}
+        busy={busy}
+        onSave={async (patch) => {
+          const ok = await onSave(patch)
+          if (ok) setFormKey((current) => current + 1)
+          return ok
+        }}
+      />
+    ) : (
+      <div className="ui-panel-subtle px-4 py-3 text-xs text-gray-500">
+        This backend does not advertise <span className="font-mono">notifications.settings</span>,
+        so the target can only be changed through the server&apos;s environment variables.
+      </div>
+    )}
+
+    <section>
+      <h3 className="mb-2 text-sm font-medium text-gray-300">Recent deliveries</h3>
+      <div className="ui-scroll-region divide-y divide-white/[0.05] border-y border-white/[0.07] pr-1">
+        {notifications.deliveries.length
+          ? notifications.deliveries.map((delivery) => (
+              <DeliveryRow key={`${delivery.ts}-${delivery.event}`} delivery={delivery} />
+            ))
+          : <div className="py-6 text-center text-sm text-gray-600">No deliveries recorded.</div>}
+      </div>
+    </section>
+
+    <ConfirmDialog
+      open={confirmReset}
+      onOpenChange={(open) => {
+        if (!open && !busy) setConfirmReset(false)
+      }}
+      title="Reset notification settings"
+      description="Delete the configuration saved in the panel and fall back to the server's NOTIFY_* environment variables? The saved webhook URL and QQ credentials are discarded."
+      confirmText="Reset to env"
+      onConfirm={async () => {
+        const ok = await onReset()
+        if (ok) {
+          setConfirmReset(false)
+          setFormKey((current) => current + 1)
+        }
+      }}
+      loading={resetting}
+    />
   </div>
+}
+
+/** `events` arrives as `all`, a comma string, or an array. */
+function parseEvents(events: string | string[]): string[] {
+  if (Array.isArray(events)) return events
+
+  const value = events.trim()
+
+  if (!value || value === 'all') return []
+
+  return value.split(',').map((item) => item.trim()).filter(Boolean)
+}
+
+/**
+ * Editable notification target.
+ *
+ * Only fields the user actually touched are sent: the API merges, so omitted
+ * fields keep their stored value. That matters because the panel never
+ * receives real credentials — `url` comes back host-only and
+ * `qq.client_secret` as a mask — so echoing them back would be wrong.
+ */
+function NotificationSettingsForm({
+  notifications,
+  saving,
+  busy,
+  onSave,
+}: {
+  notifications: NotificationsResponse
+  saving: boolean
+  busy: boolean
+  onSave: (patch: NotificationSettingsUpdate) => Promise<boolean>
+}) {
+  const [provider, setProvider] = useState(notifications.provider)
+  const [url, setUrl] = useState('')
+  const [events, setEvents] = useState<string[]>(() => parseEvents(notifications.events))
+  const [appId, setAppId] = useState(notifications.qq?.app_id ?? '')
+  const [clientSecret, setClientSecret] = useState('')
+  const [channelId, setChannelId] = useState(notifications.qq?.channel_id ?? '')
+  const [sandbox, setSandbox] = useState(notifications.qq?.sandbox ?? false)
+  const [apiBase, setApiBase] = useState('')
+  const [tokenUrl, setTokenUrl] = useState('')
+  const [touched, setTouched] = useState<Set<string>>(() => new Set())
+
+  function mark(field: string) {
+    setTouched((current) => new Set(current).add(field))
+  }
+
+  function toggleEvent(name: string) {
+    mark('events')
+    setEvents((current) =>
+      current.includes(name)
+        ? current.filter((item) => item !== name)
+        : [...current, name],
+    )
+  }
+
+  function buildPatch(): NotificationSettingsUpdate {
+    const patch: NotificationSettingsUpdate = {}
+
+    if (touched.has('provider')) patch.provider = provider
+    // "" clears the stored URL; the API treats a mask as "keep".
+    if (touched.has('url')) patch.url = url
+
+    if (touched.has('events')) {
+      // No selection means "all events" per the contract.
+      patch.events = events.join(',')
+    }
+
+    const qq: NotificationQQUpdate = {}
+    if (touched.has('qq.app_id')) qq.app_id = appId
+    if (touched.has('qq.client_secret')) qq.client_secret = clientSecret
+    if (touched.has('qq.channel_id')) qq.channel_id = channelId
+    if (touched.has('qq.sandbox')) qq.sandbox = sandbox
+    if (touched.has('qq.api_base')) qq.api_base = apiBase
+    if (touched.has('qq.token_url')) qq.token_url = tokenUrl
+    if (Object.keys(qq).length) patch.qq = qq
+
+    return patch
+  }
+
+  const dirty = touched.size > 0
+  const isQq = provider === 'qq'
+  const urlSet = notifications.url_set
+  const secretSet = notifications.qq?.client_secret_set
+
+  const rowClass = 'grid gap-1.5'
+  const labelClass = 'text-xs font-medium text-gray-500'
+  const inputClass = 'ui-input px-3 py-2.5 text-sm'
+
+  return (
+    <section className="ui-panel p-4">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <h3 className="text-sm font-medium text-gray-300">Delivery target</h3>
+        {dirty && (
+          <span className="text-[11px] text-amber-400">
+            {touched.size} unsaved change{touched.size > 1 ? 's' : ''}
+          </span>
+        )}
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <label className={rowClass}>
+          <span className={labelClass}>Channel</span>
+          <select
+            value={provider}
+            onChange={(event) => {
+              mark('provider')
+              setProvider(event.target.value)
+            }}
+            className={inputClass}
+          >
+            {NOTIFICATION_PROVIDERS.map((option) => (
+              <option key={option.id} value={option.id}>{option.label}</option>
+            ))}
+          </select>
+        </label>
+
+        {!isQq && (
+          <div className={rowClass}>
+            <label className="grid gap-1.5">
+              <span className={labelClass}>
+                Webhook URL
+                {urlSet && <span className="ml-2 text-gray-600">currently set</span>}
+              </span>
+              <input
+                type="text"
+                value={url}
+                onChange={(event) => {
+                  mark('url')
+                  setUrl(event.target.value)
+                }}
+                placeholder={urlSet
+                  ? 'Leave blank to keep the saved URL'
+                  : 'https://open.feishu.cn/open-apis/bot/v2/hook/…'}
+                className={inputClass}
+              />
+            </label>
+
+            {/* The field starts blank because the API only echoes the host,
+                and Save is disabled until something is touched — so without
+                this, "clear it to remove the saved URL" was unreachable. */}
+            <span className="flex items-start justify-between gap-2 text-[11px] text-gray-600">
+              <span>
+                The API only ever echoes the host, so the field starts blank.
+                Blank keeps the saved value.
+              </span>
+
+              {urlSet && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    mark('url')
+                    setUrl('')
+                  }}
+                  className="shrink-0 text-amber-400 transition hover:text-amber-300"
+                >
+                  Remove saved URL
+                </button>
+              )}
+            </span>
+          </div>
+        )}
+      </div>
+
+      {isQq && (
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <label className={rowClass}>
+            <span className={labelClass}>App ID</span>
+            <input
+              type="text"
+              value={appId}
+              onChange={(event) => {
+                mark('qq.app_id')
+                setAppId(event.target.value)
+              }}
+              placeholder="102xxxxx"
+              className={inputClass}
+            />
+          </label>
+
+          <label className={rowClass}>
+            <span className={labelClass}>
+              Client secret
+              {secretSet && <span className="ml-2 text-gray-600">currently set</span>}
+            </span>
+            <input
+              type="password"
+              value={clientSecret}
+              onChange={(event) => {
+                mark('qq.client_secret')
+                setClientSecret(event.target.value)
+              }}
+              placeholder={secretSet ? 'Leave blank to keep the saved secret' : 'Client secret'}
+              className={inputClass}
+            />
+          </label>
+
+          <label className={rowClass}>
+            <span className={labelClass}>Channel ID</span>
+            <input
+              type="text"
+              value={channelId}
+              onChange={(event) => {
+                mark('qq.channel_id')
+                setChannelId(event.target.value)
+              }}
+              placeholder="1234567"
+              className={inputClass}
+            />
+          </label>
+
+          <label className="flex items-center gap-2 self-end pb-2 text-sm text-gray-400">
+            <input
+              type="checkbox"
+              checked={sandbox}
+              onChange={(event) => {
+                mark('qq.sandbox')
+                setSandbox(event.target.checked)
+              }}
+              className="accent-emerald-500"
+            />
+            Sandbox environment
+          </label>
+
+          <label className={rowClass}>
+            <span className={labelClass}>API base override</span>
+            <input
+              type="text"
+              value={apiBase}
+              onChange={(event) => {
+                mark('qq.api_base')
+                setApiBase(event.target.value)
+              }}
+              placeholder="https://api.bot.qq.com"
+              className={inputClass}
+            />
+          </label>
+
+          <label className={rowClass}>
+            <span className={labelClass}>Token URL override</span>
+            <input
+              type="text"
+              value={tokenUrl}
+              onChange={(event) => {
+                mark('qq.token_url')
+                setTokenUrl(event.target.value)
+              }}
+              placeholder="https://api.bot.qq.com/app/getAppAccessToken"
+              className={inputClass}
+            />
+          </label>
+        </div>
+      )}
+
+      <div className="mt-5">
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <span className={labelClass}>Events</span>
+          <span className="text-[11px] text-gray-600">
+            {events.length === 0 ? 'All events' : `${events.length} selected`}
+          </span>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {NOTIFICATION_EVENTS.map((name) => {
+            const active = events.includes(name)
+            return (
+              <button
+                key={name}
+                type="button"
+                aria-pressed={active}
+                onClick={() => toggleEvent(name)}
+                className={[
+                  'rounded-md border px-2.5 py-1.5 font-mono text-[11px] transition',
+                  active
+                    ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                    : 'border-white/[0.07] bg-white/[0.025] text-gray-500 hover:text-gray-300',
+                ].join(' ')}
+              >
+                {name}
+              </button>
+            )
+          })}
+        </div>
+        <p className="mt-2 text-[11px] text-gray-600">
+          Selecting nothing means every event. QQ channel bots are rate limited
+          (about 20 proactive messages per sub-channel per day), so a low-volume
+          set such as{' '}
+          <span className="font-mono">log_stalled, schedule_failed, server_error</span>{' '}
+          is usually a better fit there.
+        </p>
+      </div>
+
+      <div className="mt-5 flex items-center justify-end gap-2">
+        <button
+          type="button"
+          disabled={!dirty || busy}
+          onClick={() => void onSave(buildPatch())}
+          className="ui-button ui-button-accent"
+        >
+          <Check size={15} /> {saving ? 'Saving...' : 'Save target'}
+        </button>
+      </div>
+    </section>
+  )
 }
 
 /**

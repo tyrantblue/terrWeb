@@ -62,13 +62,81 @@ export interface NotificationDelivery {
   error: string | null
 }
 
+/** QQ 频道机器人 credentials; the secret is only ever echoed as a mask. */
+export interface NotificationQQStatus {
+  app_id: string
+  /** Masked (`••••••`) once set — never send this back. */
+  client_secret: string
+  client_secret_set: boolean
+  channel_id: string
+  sandbox: boolean
+  api_base: string
+  token_url: string
+}
+
+/** Where the active notification config came from. */
+export type NotificationSource = 'env' | 'file'
+
 export interface NotificationsResponse {
   enabled: boolean
-  /** Masked webhook URL; the API never echoes the full secret. */
-  url: string
+  /** The configured channel, e.g. `qq`, `feishu`, `none`. */
+  provider: string
+  /** The channel actually used — `auto` resolves to a concrete one here. */
   format: string
+  /** Host-only echo of the webhook URL; the full URL is a credential. */
+  url: string
+  url_set: boolean
   events: string | string[]
+  /** Fields still needed before delivery can work, e.g. `["qq.client_secret"]`. */
+  missing: string[]
+  source: NotificationSource
+  qq: NotificationQQStatus
   deliveries: NotificationDelivery[]
+}
+
+/** Channels accepted by `provider`. */
+export const NOTIFICATION_PROVIDERS = [
+  { id: 'auto', label: 'Auto (detect from URL)' },
+  { id: 'feishu', label: 'Feishu / Lark' },
+  { id: 'discord', label: 'Discord' },
+  { id: 'slack', label: 'Slack' },
+  { id: 'json', label: 'Generic JSON' },
+  { id: 'qq', label: 'QQ channel bot' },
+  { id: 'none', label: 'Off (keep credentials)' },
+] as const
+
+/** Event vocabulary; `test` is reserved for the test endpoint. */
+export const NOTIFICATION_EVENTS = [
+  'player_join',
+  'player_leave',
+  'player_booted',
+  'server_up',
+  'server_error',
+  'backup_done',
+  'schedule_failed',
+  'restart_skipped',
+  'log_stalled',
+] as const
+
+export interface NotificationQQUpdate {
+  app_id?: string | null
+  client_secret?: string | null
+  channel_id?: string | null
+  sandbox?: boolean | null
+  api_base?: string | null
+  token_url?: string | null
+}
+
+/**
+ * Merge semantics, so a read-modify-write from the panel is safe:
+ * an omitted or `null` field keeps its current value, `""` clears it, and a
+ * mask is treated as "keep" (a mask can never be a real credential).
+ */
+export interface NotificationSettingsUpdate {
+  provider?: string | null
+  url?: string | null
+  events?: string | null
+  qq?: NotificationQQUpdate | null
 }
 
 export interface GuardAllowEntry {
@@ -213,6 +281,29 @@ export function getNotifications() {
     '/api/v1/notifications',
   )
 }
+
+/** Writes the runtime config (control/notify.json); takes effect at once. */
+export function updateNotificationSettings(
+  patch: NotificationSettingsUpdate,
+) {
+  return apiFetch<NotificationsResponse>(
+    '/api/v1/notifications/settings',
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    },
+  )
+}
+
+/** Drops the runtime config and falls back to the NOTIFY_* env defaults. */
+export function resetNotificationSettings() {
+  return apiFetch<NotificationsResponse>(
+    '/api/v1/notifications/settings',
+    { method: 'DELETE' },
+  )
+}
+
 
 export function testNotifications() {
   return apiFetch<NotificationDelivery>(

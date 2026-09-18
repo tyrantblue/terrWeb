@@ -26,6 +26,14 @@ export const CAPABILITIES = {
   serverLogHealth: 'server.log_health',
   serverMetrics: 'server.metrics',
   configPasswordMasked: 'config.password_masked',
+  /** API 2.1.0+: notification status and test delivery. */
+  notificationsStatus: 'notifications.status',
+  /** API 2.2.0+: notification targets are writable from the panel. */
+  notificationsSettings: 'notifications.settings',
+  /** API 2.1.0+: guard / scheduler / backups status surfaces. */
+  guardState: 'guard.state',
+  schedulerJobs: 'scheduler.jobs',
+  backupsList: 'backups.list',
   metaHandshake: 'meta.handshake',
 } as const
 

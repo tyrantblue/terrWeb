@@ -81,37 +81,6 @@ export const API_BASE_URL = 'https://terraria-api.tyrantblue.xyz'
 | Operations | 长任务历史、备份恢复、定时任务、连接守卫和通知 |
 | Settings | 持久化服务器配置 |
 
-### UI v2 预览（`/next/*`）
-
-`src/v2/` 是一套模仿 terraria.org 视觉语言的新皮肤，与上面这套 Classic UI **并存**，
-复用同一批 provider 与 API 模块，只换"皮"。入口：
-
-| 路由 | 内容 |
-| --- | --- |
-| `/next` | 用 v2 皮肤渲染的 Dashboard（实时数据） |
-| `/next/kit` | 组件总览，用于挑样/验收 |
-| `/next/{worlds,players,console,operations,settings}` | 占位页，逐步迁移 |
-
-Classic UI 顶栏右上角有「New UI」按钮进入预览；v2 页脚/导航里的「Classic UI」可返回。
-
-**美术全部在运行时引用，仓库不存放、不打包任何图片**：
-
-| 用途 | 默认来源 |
-| --- | --- |
-| 站点图标（`<link rel="icon">` / apple-touch-icon） | `terraria.org/favicon.ico`、`/apple-touch-icon.png` |
-| v2 背景、面板三段、像素草带、标题木牌、导航板、logo | `terraria.org/static/media/*`（Re-Logic 官方美术） |
-| v2 图标（27 个） | `cdn.jsdelivr.net/gh/halfmage/pixelarticons@2.4.1`（MIT，CSS mask 染色） |
-| v2 字体 | Google Fonts（Open Sans / Merriweather） |
-
-**注意请求范围**：站点图标写在 `index.html` 里，所以**打开任意页面（含 Classic UI）
-都会向 terraria.org 请求它**；v2 页面另外会请求 `cdn.jsdelivr.net` 与 `fonts.googleapis.com`。
-离线或受限网络下的表现：图标缺失、v2 面板退化成纯色（保留 `#5a3d2a` 底色）、图标不绘制；
-Classic UI 的功能不受影响。v2 的 chrome / 图标可以在右上角「眼睛」里换成自建镜像，
-选择存在浏览器本地。
-
-> 注意：官网 chrome 文件名带内容哈希（`fade_in.84ea52c8.jpg`），Re-Logic 重新部署就会失效；
-> 长期使用建议自建镜像。详见 `docs/ui-v2-plan.md`。
-
 ## 部署
 
 项目包含 Cloudflare Wrangler 配置。部署命令会先执行生产构建：

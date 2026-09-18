@@ -8,7 +8,6 @@ import {
   Settings,
   ShieldCheck,
   Menu,
-  Sparkles,
   X,
 } from 'lucide-react'
 import {
@@ -356,8 +355,6 @@ export default function MainLayout() {
           </div>
 
 
-          <div className="flex shrink-0 items-center gap-2">
-
           <div
             className={[
               'flex items-center',
@@ -388,24 +385,6 @@ export default function MainLayout() {
                   ? 'Connecting'
                   : 'Connected'}
             </span>
-
-          </div>
-
-          {/* Entry point into the v2 theme. Without this the new UI was only
-              reachable by typing the URL. */}
-          <NavLink
-            to="/next"
-            title="Preview the Terraria-style theme"
-            className={[
-              'ui-button',
-              'ui-button-secondary',
-              'shrink-0',
-              'no-underline',
-            ].join(' ')}
-          >
-            <Sparkles size={15} />
-            <span className="hidden sm:inline">New UI</span>
-          </NavLink>
 
           </div>
 

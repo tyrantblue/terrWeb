@@ -1288,6 +1288,18 @@ function DeliveryRow({ delivery }: { delivery: NotificationDelivery }) {
           </span>
         </div>
         {delivery.error && <div className="mt-1 text-xs text-red-400">{delivery.error}</div>}
+        {/* 2.3.1 moved the qualifier for a *successful* delivery out of
+            `error` (where "any error means failed" was wrong) into `note`:
+            qqPush answers 202 on enqueue, so "accepted but unconfirmed" is
+            neither a failure nor a confirmation and has to be visible. */}
+        {delivery.note && (
+          <div
+            className="mt-1 text-xs text-gray-400"
+            title={delivery.job_id ? `qqPush job ${delivery.job_id}` : undefined}
+          >
+            {delivery.note}
+          </div>
+        )}
       </div>
     </div>
   )

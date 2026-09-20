@@ -36,6 +36,20 @@
     font-size: 0.875rem;
   }
 
+  /* Native selects need explicit colours: `background: transparent-ish` is
+     fine for the closed control, but the option list is painted by the OS
+     unless told otherwise. */
+  select.ui-input {
+    background-color: #1b1e21;
+    color: var(--ui-text-primary);
+    cursor: pointer;
+  }
+
+  select.ui-input option {
+    background-color: #1b1e21;
+    color: var(--ui-text-primary);
+  }
+
   .ui-input {
     border: 1px solid var(--ui-border);
     border-radius: var(--ui-radius-control);

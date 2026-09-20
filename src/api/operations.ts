@@ -60,6 +60,10 @@ export interface NotificationDelivery {
   ok: boolean
   status: number | null
   error: string | null
+  /** qqPush job id, for looking the delivery up yourself. */
+  job_id?: string | null
+  /** Free-form qualifier, e.g. accepted-but-unconfirmed. */
+  note?: string | null
 }
 
 /** QQ 频道机器人 credentials; the secret is only ever echoed as a mask. */
@@ -72,6 +76,47 @@ export interface NotificationQQStatus {
   sandbox: boolean
   api_base: string
   token_url: string
+}
+
+/** qqPush forwarding service; `token` only ever comes back masked. */
+export interface NotificationQQPushStatus {
+  base_url: string
+  base_url_set: boolean
+  /** Masked once set — never send this back. */
+  token: string
+  token_set: boolean
+  /** Group name or openid; empty uses the service's default targets. */
+  target: string
+  /** How long to poll `/status/<job_id>`; the backend clamps it to 0..30. */
+  verify_seconds: number
+}
+
+/**
+ * One entry of the channel catalogue. The backend states which fields each
+ * channel needs, so the form is built from this rather than hardcoding a
+ * field list per channel — a new channel needs no frontend release.
+ * Field names are dot-paths, e.g. `url` or `qqpush.base_url`.
+ */
+export interface NotificationProviderInfo {
+  name: string
+  required: string[]
+  optional: string[]
+}
+
+/** A deliverable target of the active channel (qqPush group names/openids). */
+export interface NotificationTargetEntry {
+  name?: string
+  openid?: string
+  [key: string]: unknown
+}
+
+export interface NotificationTargetsResponse {
+  provider: string
+  channel: string
+  target_hint: string
+  targets: string[]
+  openids: NotificationTargetEntry[]
+  default_targets: string[]
 }
 
 /** Where the active notification config came from. */
@@ -90,20 +135,32 @@ export interface NotificationsResponse {
   /** Fields still needed before delivery can work, e.g. `["qq.client_secret"]`. */
   missing: string[]
   source: NotificationSource
+  /** Channel catalogue straight from the backend. */
+  providers: NotificationProviderInfo[]
   qq: NotificationQQStatus
+  qqpush: NotificationQQPushStatus
   deliveries: NotificationDelivery[]
 }
 
 /** Channels accepted by `provider`. */
-export const NOTIFICATION_PROVIDERS = [
-  { id: 'auto', label: 'Auto (detect from URL)' },
-  { id: 'feishu', label: 'Feishu / Lark' },
-  { id: 'discord', label: 'Discord' },
-  { id: 'slack', label: 'Slack' },
-  { id: 'json', label: 'Generic JSON' },
-  { id: 'qq', label: 'QQ channel bot' },
-  { id: 'none', label: 'Off (keep credentials)' },
-] as const
+/**
+ * Display names for channels. The backend's catalogue decides which are
+ * offered; this only supplies a prettier label, falling back to the raw name.
+ */
+export const NOTIFICATION_PROVIDER_LABELS: Record<string, string> = {
+  auto: 'Auto (detect from URL)',
+  feishu: 'Feishu / Lark',
+  discord: 'Discord',
+  slack: 'Slack',
+  json: 'Generic JSON',
+  qq: 'QQ channel bot',
+  qqpush: 'qqPush (QQ group forwarding)',
+  none: 'Off (keep credentials)',
+}
+
+export function notificationProviderLabel(name: string) {
+  return NOTIFICATION_PROVIDER_LABELS[name] ?? name
+}
 
 /** Event vocabulary; `test` is reserved for the test endpoint. */
 export const NOTIFICATION_EVENTS = [
@@ -127,6 +184,13 @@ export interface NotificationQQUpdate {
   token_url?: string | null
 }
 
+export interface NotificationQQPushUpdate {
+  base_url?: string | null
+  token?: string | null
+  target?: string | null
+  verify_seconds?: number | null
+}
+
 /**
  * Merge semantics, so a read-modify-write from the panel is safe:
  * an omitted or `null` field keeps its current value, `""` clears it, and a
@@ -137,6 +201,7 @@ export interface NotificationSettingsUpdate {
   url?: string | null
   events?: string | null
   qq?: NotificationQQUpdate | null
+  qqpush?: NotificationQQPushUpdate | null
 }
 
 export interface GuardAllowEntry {
@@ -295,6 +360,17 @@ export function updateNotificationSettings(
     },
   )
 }
+
+/**
+ * Delivery targets the active channel can reach. Only `qqpush` supports it:
+ * every other channel answers 400 with `error.details.supported`.
+ */
+export function getNotificationTargets() {
+  return apiFetch<NotificationTargetsResponse>(
+    '/api/v1/notifications/targets',
+  )
+}
+
 
 /** Drops the runtime config and falls back to the NOTIFY_* env defaults. */
 export function resetNotificationSettings() {

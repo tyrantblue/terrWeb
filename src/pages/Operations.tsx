@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useState,
   type FormEvent,
@@ -24,10 +25,11 @@ import {
   banIp,
   classifyHeartbeatDetail,
   NOTIFICATION_EVENTS,
-  NOTIFICATION_PROVIDERS,
   getBackups,
   getGuard,
+  getNotificationTargets,
   getNotifications,
+  notificationProviderLabel,
   getScheduler,
   reloadGuard,
   removeAllowedIp,
@@ -41,8 +43,8 @@ import {
   type BackupsResponse,
   type GuardResponse,
   type NotificationDelivery,
-  type NotificationQQUpdate,
   type NotificationSettingsUpdate,
+  type NotificationTargetsResponse,
   type NotificationsResponse,
   type SchedulerResponse,
 } from '../api/operations'
@@ -763,6 +765,101 @@ function parseEvents(events: string | string[]): string[] {
  * receives real credentials — `url` comes back host-only and
  * `qq.client_secret` as a mask — so echoing them back would be wrong.
  */
+/** Field metadata, keyed by the backend's dot-path field names. */
+const NOTIFICATION_FIELDS: Record<string, {
+  label: string
+  type?: 'text' | 'password' | 'number' | 'boolean'
+  placeholder?: string
+  hint?: string
+}> = {
+  url: {
+    label: 'Webhook URL',
+    placeholder: 'https://open.feishu.cn/open-apis/bot/v2/hook/…',
+    hint: 'The API only echoes the host back, so the field starts blank. Blank keeps the saved value.',
+  },
+  'qq.app_id': { label: 'App ID', placeholder: '102xxxxx' },
+  'qq.client_secret': { label: 'Client secret', type: 'password', placeholder: 'Client secret' },
+  'qq.channel_id': { label: 'Channel ID', placeholder: '1234567' },
+  'qq.sandbox': { label: 'Sandbox environment', type: 'boolean' },
+  'qq.api_base': { label: 'API base override', placeholder: 'https://api.bot.qq.com' },
+  'qq.token_url': { label: 'Token URL override', placeholder: 'https://api.bot.qq.com/app/getAppAccessToken' },
+  'qqpush.base_url': {
+    label: 'qqPush base URL',
+    placeholder: 'http://172.18.0.1:8088',
+    hint: 'Must be reachable from the API container, not from your browser.',
+  },
+  'qqpush.token': { label: 'Push token', type: 'password', placeholder: 'X-Push-Token value' },
+  'qqpush.target': {
+    label: 'Target group',
+    placeholder: 'Leave blank for the service default',
+    hint: 'Pick a discovered group below, or type an openid.',
+  },
+  'qqpush.verify_seconds': {
+    label: 'Delivery confirm window (s)',
+    type: 'number',
+    hint: 'qqPush answers 202 on enqueue, so the API polls for the real result. 0 disables it. Clamped to 0-30.',
+  },
+}
+
+/**
+ * Field lists used when the backend advertises `notifications.settings` but
+ * returns no catalogue (a 2.2.x backend, or a backend that grew a channel
+ * without the catalogue). Keeps the form usable instead of rendering an
+ * empty panel; the catalogue wins whenever it is present.
+ */
+const FALLBACK_PROVIDER_FIELDS: Record<
+  string,
+  { required: string[]; optional: string[] }
+> = {
+  auto: { required: ['url'], optional: [] },
+  feishu: { required: ['url'], optional: [] },
+  discord: { required: ['url'], optional: [] },
+  slack: { required: ['url'], optional: [] },
+  json: { required: ['url'], optional: [] },
+  qq: {
+    required: ['qq.app_id', 'qq.client_secret', 'qq.channel_id'],
+    optional: ['qq.sandbox', 'qq.api_base', 'qq.token_url'],
+  },
+  qqpush: {
+    required: ['qqpush.base_url'],
+    optional: ['qqpush.token', 'qqpush.target', 'qqpush.verify_seconds'],
+  },
+  none: { required: [], optional: [] },
+}
+
+/** Reads a dot-path out of the status payload. */
+function readField(
+  status: NotificationsResponse,
+  path: string,
+): string | number | boolean {
+  const [group, key] = path.includes('.') ? path.split('.') : [null, path]
+
+  if (group === null) {
+    return key === 'url' ? status.url : ''
+  }
+
+  const bag = (status as unknown as Record<string, Record<string, unknown>>)[group]
+
+  return (bag?.[key] ?? '') as string | number | boolean
+}
+
+/** True when the backend flags this field as intentionally masked. */
+function isMaskedField(status: NotificationsResponse, path: string) {
+  if (path === 'url') return status.url_set
+  if (path === 'qq.client_secret') return status.qq?.client_secret_set ?? false
+  if (path === 'qqpush.token') return status.qqpush?.token_set ?? false
+  return false
+}
+
+/**
+ * Editable notification target.
+ *
+ * The field list comes from the backend's provider catalogue, so a channel
+ * added server-side shows up here without a frontend release. Only fields the
+ * user actually touched are submitted: the API merges, and the panel never
+ * receives real credentials (the URL arrives host-only, secrets as masks), so
+ * echoing them back would be wrong.
+ */
 function NotificationSettingsForm({
   notifications,
   saving,
@@ -775,18 +872,49 @@ function NotificationSettingsForm({
   onSave: (patch: NotificationSettingsUpdate) => Promise<boolean>
 }) {
   const [provider, setProvider] = useState(notifications.provider)
-  const [url, setUrl] = useState('')
+  const [values, setValues] = useState<Record<string, string | boolean>>({})
   const [events, setEvents] = useState<string[]>(() => parseEvents(notifications.events))
-  const [appId, setAppId] = useState(notifications.qq?.app_id ?? '')
-  const [clientSecret, setClientSecret] = useState('')
-  const [channelId, setChannelId] = useState(notifications.qq?.channel_id ?? '')
-  const [sandbox, setSandbox] = useState(notifications.qq?.sandbox ?? false)
-  const [apiBase, setApiBase] = useState('')
-  const [tokenUrl, setTokenUrl] = useState('')
   const [touched, setTouched] = useState<Set<string>>(() => new Set())
+
+  const catalogue = notifications.providers ?? []
+  /**
+   * Without a catalogue the backend is a 2.2.x one (the catalogue arrived in
+   * 2.3.0), and `qqpush` arrived with it — offering it there would only earn
+   * a 400 on save and a 404 from the targets route. The catalogue wins
+   * whenever it is present, so a real 2.3.x backend still gets qqPush.
+   */
+  const providerNames = catalogue.length
+    ? catalogue.map((entry) => entry.name)
+    : ['auto', 'feishu', 'discord', 'slack', 'json', 'qq', 'none']
+
+  // Keep the active provider selectable even if the catalogue omits it.
+  const available = providerNames.includes(provider)
+    ? providerNames
+    : [provider, ...providerNames]
+
+  const active =
+    catalogue.find((entry) => entry.name === provider) ??
+    FALLBACK_PROVIDER_FIELDS[provider]
+  const fields = active ? [...active.required, ...active.optional] : []
 
   function mark(field: string) {
     setTouched((current) => new Set(current).add(field))
+  }
+
+  function valueFor(path: string): string {
+    if (path in values) return String(values[path])
+
+    const initial = readField(notifications, path)
+
+    if (typeof initial === 'boolean') return initial ? 'true' : 'false'
+
+    // Never prefill a masked credential — the user must retype it.
+    return isMaskedField(notifications, path) ? '' : String(initial)
+  }
+
+  function boolFor(path: string): boolean {
+    if (path in values) return Boolean(values[path])
+    return readField(notifications, path) === true
   }
 
   function toggleEvent(name: string) {
@@ -800,36 +928,41 @@ function NotificationSettingsForm({
 
   function buildPatch(): NotificationSettingsUpdate {
     const patch: NotificationSettingsUpdate = {}
+    const nested: Record<string, Record<string, unknown>> = {}
 
     if (touched.has('provider')) patch.provider = provider
-    // "" clears the stored URL; the API treats a mask as "keep".
-    if (touched.has('url')) patch.url = url
 
-    if (touched.has('events')) {
-      // No selection means "all events" per the contract.
-      patch.events = events.join(',')
+    for (const path of touched) {
+      if (path === 'provider' || path === 'events') continue
+
+      const meta = NOTIFICATION_FIELDS[path]
+      let value: string | number | boolean = values[path] ?? valueFor(path)
+
+      if (meta?.type === 'number') {
+        const parsed = Number(value)
+        value = Number.isFinite(parsed) ? parsed : 0
+      }
+
+      if (path.includes('.')) {
+        const [group, key] = path.split('.')
+        nested[group] = { ...(nested[group] ?? {}), [key]: value }
+      } else {
+        ;(patch as Record<string, unknown>)[path] = value
+      }
     }
 
-    const qq: NotificationQQUpdate = {}
-    if (touched.has('qq.app_id')) qq.app_id = appId
-    if (touched.has('qq.client_secret')) qq.client_secret = clientSecret
-    if (touched.has('qq.channel_id')) qq.channel_id = channelId
-    if (touched.has('qq.sandbox')) qq.sandbox = sandbox
-    if (touched.has('qq.api_base')) qq.api_base = apiBase
-    if (touched.has('qq.token_url')) qq.token_url = tokenUrl
-    if (Object.keys(qq).length) patch.qq = qq
+    for (const [group, bag] of Object.entries(nested)) {
+      ;(patch as Record<string, unknown>)[group] = bag
+    }
+
+    // No selection means "all events" per the contract.
+    if (touched.has('events')) patch.events = events.join(',')
 
     return patch
   }
 
   const dirty = touched.size > 0
-  const isQq = provider === 'qq'
-  const urlSet = notifications.url_set
-  const secretSet = notifications.qq?.client_secret_set
-
-  const rowClass = 'grid gap-1.5'
-  const labelClass = 'text-xs font-medium text-gray-500'
-  const inputClass = 'ui-input px-3 py-2.5 text-sm'
+  const isQqPush = provider === 'qqpush'
 
   return (
     <section className="ui-panel p-4">
@@ -842,179 +975,146 @@ function NotificationSettingsForm({
         )}
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <label className={rowClass}>
-          <span className={labelClass}>Channel</span>
+      {/* The picker gets its own row: sharing a two-column grid with the
+          channel fields left it floating half-width with a gap beside it. */}
+      <div className="grid gap-4">
+        <label className="grid gap-1.5 sm:max-w-md">
+          <span className="text-xs font-medium text-gray-500">Channel</span>
           <select
             value={provider}
             onChange={(event) => {
               mark('provider')
               setProvider(event.target.value)
             }}
-            className={inputClass}
+            className="ui-input px-3 py-2.5 text-sm"
           >
-            {NOTIFICATION_PROVIDERS.map((option) => (
-              <option key={option.id} value={option.id}>{option.label}</option>
+            {available.map((name) => (
+              <option key={name} value={name}>
+                {notificationProviderLabel(name)}
+              </option>
             ))}
           </select>
         </label>
 
-        {!isQq && (
-          <div className={rowClass}>
-            <label className="grid gap-1.5">
-              <span className={labelClass}>
-                Webhook URL
-                {urlSet && <span className="ml-2 text-gray-600">currently set</span>}
-              </span>
-              <input
-                type="text"
-                value={url}
-                onChange={(event) => {
-                  mark('url')
-                  setUrl(event.target.value)
-                }}
-                placeholder={urlSet
-                  ? 'Leave blank to keep the saved URL'
-                  : 'https://open.feishu.cn/open-apis/bot/v2/hook/…'}
-                className={inputClass}
-              />
-            </label>
+        {fields.length > 0 && (
+          <div className="grid gap-4 sm:grid-cols-2">
+            {fields.map((path) => {
+              const meta = NOTIFICATION_FIELDS[path] ?? { label: path }
+              const masked = isMaskedField(notifications, path)
 
-            {/* The field starts blank because the API only echoes the host,
-                and Save is disabled until something is touched — so without
-                this, "clear it to remove the saved URL" was unreachable. */}
-            <span className="flex items-start justify-between gap-2 text-[11px] text-gray-600">
-              <span>
-                The API only ever echoes the host, so the field starts blank.
-                Blank keeps the saved value.
-              </span>
+              if (meta.type === 'boolean') {
+                return (
+                  <label
+                    key={path}
+                    className="flex items-center gap-2 self-end pb-3 text-sm text-gray-400"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={boolFor(path)}
+                      onChange={(event) => {
+                        mark(path)
+                        setValues((current) => ({
+                          ...current,
+                          [path]: event.target.checked,
+                        }))
+                      }}
+                      className="accent-emerald-500"
+                    />
+                    {meta.label}
+                  </label>
+                )
+              }
 
-              {urlSet && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    mark('url')
-                    setUrl('')
-                  }}
-                  className="shrink-0 text-amber-400 transition hover:text-amber-300"
-                >
-                  Remove saved URL
-                </button>
-              )}
-            </span>
+              const inputType = meta.type === 'password'
+                ? 'password'
+                : meta.type === 'number'
+                  ? 'number'
+                  : 'text'
+
+              return (
+                <div key={path} className="grid gap-1.5">
+                  <label className="grid gap-1.5">
+                    <span className="text-xs font-medium text-gray-500">
+                      {meta.label}
+                      {masked && (
+                        <span className="ml-2 text-gray-600">currently set</span>
+                      )}
+                    </span>
+                    <input
+                      type={inputType}
+                      value={valueFor(path)}
+                      onChange={(event) => {
+                        mark(path)
+                        setValues((current) => ({
+                          ...current,
+                          [path]: event.target.value,
+                        }))
+                      }}
+                      placeholder={
+                        masked ? 'Leave blank to keep the saved value' : meta.placeholder
+                      }
+                      className="ui-input px-3 py-2.5 text-sm"
+                    />
+                  </label>
+
+                  {/* A masked field starts blank and Save is disabled until
+                      something is touched, so without an explicit action the
+                      documented "clear it" path is unreachable. */}
+                  {(meta.hint || masked) && (
+                    <span className="flex items-start justify-between gap-2 text-[11px] leading-4 text-gray-600">
+                      <span>
+                        {meta.hint ?? 'Blank keeps the saved value.'}
+                      </span>
+
+                      {masked && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            mark(path)
+                            setValues((current) => ({ ...current, [path]: '' }))
+                          }}
+                          className="shrink-0 text-amber-400 transition hover:text-amber-300"
+                        >
+                          Clear saved value
+                        </button>
+                      )}
+                    </span>
+                  )}
+                </div>
+              )
+            })}
           </div>
+        )}
+
+        {isQqPush && (
+          <TargetPicker
+            onPick={(target) => {
+              mark('qqpush.target')
+              setValues((current) => ({ ...current, 'qqpush.target': target }))
+            }}
+          />
         )}
       </div>
 
-      {isQq && (
-        <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          <label className={rowClass}>
-            <span className={labelClass}>App ID</span>
-            <input
-              type="text"
-              value={appId}
-              onChange={(event) => {
-                mark('qq.app_id')
-                setAppId(event.target.value)
-              }}
-              placeholder="102xxxxx"
-              className={inputClass}
-            />
-          </label>
-
-          <label className={rowClass}>
-            <span className={labelClass}>
-              Client secret
-              {secretSet && <span className="ml-2 text-gray-600">currently set</span>}
-            </span>
-            <input
-              type="password"
-              value={clientSecret}
-              onChange={(event) => {
-                mark('qq.client_secret')
-                setClientSecret(event.target.value)
-              }}
-              placeholder={secretSet ? 'Leave blank to keep the saved secret' : 'Client secret'}
-              className={inputClass}
-            />
-          </label>
-
-          <label className={rowClass}>
-            <span className={labelClass}>Channel ID</span>
-            <input
-              type="text"
-              value={channelId}
-              onChange={(event) => {
-                mark('qq.channel_id')
-                setChannelId(event.target.value)
-              }}
-              placeholder="1234567"
-              className={inputClass}
-            />
-          </label>
-
-          <label className="flex items-center gap-2 self-end pb-2 text-sm text-gray-400">
-            <input
-              type="checkbox"
-              checked={sandbox}
-              onChange={(event) => {
-                mark('qq.sandbox')
-                setSandbox(event.target.checked)
-              }}
-              className="accent-emerald-500"
-            />
-            Sandbox environment
-          </label>
-
-          <label className={rowClass}>
-            <span className={labelClass}>API base override</span>
-            <input
-              type="text"
-              value={apiBase}
-              onChange={(event) => {
-                mark('qq.api_base')
-                setApiBase(event.target.value)
-              }}
-              placeholder="https://api.bot.qq.com"
-              className={inputClass}
-            />
-          </label>
-
-          <label className={rowClass}>
-            <span className={labelClass}>Token URL override</span>
-            <input
-              type="text"
-              value={tokenUrl}
-              onChange={(event) => {
-                mark('qq.token_url')
-                setTokenUrl(event.target.value)
-              }}
-              placeholder="https://api.bot.qq.com/app/getAppAccessToken"
-              className={inputClass}
-            />
-          </label>
-        </div>
-      )}
-
       <div className="mt-5">
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-          <span className={labelClass}>Events</span>
+          <span className="text-xs font-medium text-gray-500">Events</span>
           <span className="text-[11px] text-gray-600">
             {events.length === 0 ? 'All events' : `${events.length} selected`}
           </span>
         </div>
         <div className="flex flex-wrap gap-2">
           {NOTIFICATION_EVENTS.map((name) => {
-            const active = events.includes(name)
+            const on = events.includes(name)
             return (
               <button
                 key={name}
                 type="button"
-                aria-pressed={active}
+                aria-pressed={on}
                 onClick={() => toggleEvent(name)}
                 className={[
                   'rounded-md border px-2.5 py-1.5 font-mono text-[11px] transition',
-                  active
+                  on
                     ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
                     : 'border-white/[0.07] bg-white/[0.025] text-gray-500 hover:text-gray-300',
                 ].join(' ')}
@@ -1024,12 +1124,14 @@ function NotificationSettingsForm({
             )
           })}
         </div>
-        <p className="mt-2 text-[11px] text-gray-600">
+        <p className="mt-2 text-[11px] leading-4 text-gray-600">
           Selecting nothing means every event. QQ channel bots are rate limited
-          (about 20 proactive messages per sub-channel per day), so a low-volume
-          set such as{' '}
-          <span className="font-mono">log_stalled, schedule_failed, server_error</span>{' '}
-          is usually a better fit there.
+          (about 20 proactive messages per sub-channel per day); qqPush handles
+          its own retries and per-group limits. A low-volume set such as{' '}
+          <span className="font-mono">
+            log_stalled, schedule_failed, server_error, restart_skipped
+          </span>{' '}
+          suits both.
         </p>
       </div>
 
@@ -1044,6 +1146,93 @@ function NotificationSettingsForm({
         </button>
       </div>
     </section>
+  )
+}
+
+/**
+ * Lists the qqPush service's groups.
+ *
+ * Only qqPush supports discovery — every other channel answers 400 with the
+ * supported list — and it answers 502 when the service is unreachable, so a
+ * failure is reported inline instead of blocking the form.
+ */
+function TargetPicker({ onPick }: { onPick: (target: string) => void }) {
+  const [targets, setTargets] = useState<NotificationTargetsResponse | null>(null)
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    setError('')
+
+    try {
+      setTargets(await getNotificationTargets())
+    } catch (caught) {
+      setError(formatErrorReport(caught))
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void load()
+    }, 0)
+
+    return () => window.clearTimeout(timer)
+  }, [load])
+
+  const groups = targets?.openids ?? []
+
+  return (
+    <div className="ui-panel-inset p-3">
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <span className="text-xs font-medium text-gray-500">Discovered groups</span>
+        <button
+          type="button"
+          onClick={() => void load()}
+          disabled={loading}
+          className="ui-button ui-button-secondary px-2.5 py-1.5 text-xs"
+        >
+          <RefreshCw size={13} className={loading ? 'motion-safe:animate-spin' : ''} /> Refresh
+        </button>
+      </div>
+
+      {error ? (
+        <p className="text-[11px] leading-4 text-amber-400">{error}</p>
+      ) : groups.length === 0 ? (
+        <p className="text-[11px] leading-4 text-gray-600">
+          {loading
+            ? 'Asking the qqPush service…'
+            : 'No groups reported. Type a target above if you know it.'}
+        </p>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          {groups.map((entry, index) => {
+            const openid = String(entry.openid ?? entry.name ?? index)
+            const label = String(entry.name ?? openid)
+
+            return (
+              <button
+                key={`${openid}-${index}`}
+                type="button"
+                onClick={() => onPick(openid)}
+                title={openid}
+                className="rounded-md border border-white/[0.07] bg-white/[0.025] px-2.5 py-1.5 text-[11px] text-gray-400 transition hover:border-emerald-500/30 hover:text-emerald-300"
+              >
+                {label}
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {targets?.target_hint && (
+        <p className="mt-2 text-[11px] leading-4 text-gray-600">
+          {targets.target_hint}
+        </p>
+      )}
+    </div>
   )
 }
 

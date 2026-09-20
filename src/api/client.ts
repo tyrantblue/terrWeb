@@ -1,7 +1,7 @@
 export const API_BASE_URL = 'https://terraria-api.tyrantblue.xyz'
 export const CLIENT_VERSION =
   import.meta.env.VITE_APP_VERSION ?? __APP_VERSION__
-export const EXPECTED_API_VERSION = '2.2.1'
+export const EXPECTED_API_VERSION = '2.3.1'
 
 /**
  * `api_version` follows semver, and the backend only breaks compatibility

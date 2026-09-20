@@ -14,6 +14,11 @@
   color: #e5e7eb;
   background: #111315;
 
+  /* Native controls (notably the <select> popup) are drawn by the browser
+     from this, not from the element's own color. Without it the option list
+     renders light-on-light and is unreadable on the dark panel. */
+  color-scheme: dark;
+
   font-synthesis: none;
   text-rendering: optimizeLegibility;
 

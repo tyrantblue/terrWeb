@@ -1,4 +1,33 @@
-export const API_BASE_URL = 'https://terraria-api.tyrantblue.xyz'
+/**
+ * Fallback used when `VITE_API_BASE_URL` is not set at build time.
+ */
+export const DEFAULT_API_BASE_URL =
+  'https://terraria-api.tyrantblue.xyz'
+
+/**
+ * Vite inlines `VITE_*` variables while building, so the API origin is a
+ * build-time setting: pointing the panel at another backend means running
+ * the build (and deploy) again with a different value. A blank or
+ * whitespace-only value falls back to the default rather than producing
+ * requests against the panel's own origin.
+ */
+function resolveApiBaseUrl(
+  configured: string | undefined,
+) {
+  const trimmed = configured?.trim()
+
+  if (!trimmed) {
+    return DEFAULT_API_BASE_URL
+  }
+
+  // Every caller appends an absolute path, so a trailing slash here would
+  // turn `.../base` + `/api/meta` into `.../base//api/meta`.
+  return trimmed.replace(/\/+$/, '')
+}
+
+export const API_BASE_URL = resolveApiBaseUrl(
+  import.meta.env.VITE_API_BASE_URL,
+)
 export const CLIENT_VERSION =
   import.meta.env.VITE_APP_VERSION ?? __APP_VERSION__
 export const EXPECTED_API_VERSION = '2.3.1'

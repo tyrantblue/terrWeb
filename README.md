@@ -57,13 +57,24 @@ pnpm preview
 
 ## API 配置
 
-默认 API 地址位于 `src/api/client.ts`：
+后端地址通过环境变量 `VITE_API_BASE_URL` 配置，不再写死在代码里：
 
-```ts
-export const API_BASE_URL = 'https://terraria-api.tyrantblue.xyz'
+| 文件 | 用途 |
+| --- | --- |
+| `.env.production` | 生产构建（`pnpm build` / `pnpm run deploy`）使用的后端地址 |
+| `.env.example` | 变量说明；复制为 `.env.local` 可覆盖本地开发地址 |
+| `src/api/client.ts` | 未配置时的兜底默认值 `DEFAULT_API_BASE_URL` |
+
+```bash
+# .env.production
+VITE_API_BASE_URL=http://117.72.197.18:8080
 ```
 
+注意：Vite 在**构建时**把 `VITE_*` 变量内联进产物，所以改地址必须重新构建并重新部署，改完 `.env` 不会影响已经发布的 bundle。值不要带结尾斜杠（代码会自行去掉）。留空则回退到默认地址。
+
 面板请求会携带 `X-Client-Version`，并在启动时调用 `/api/meta` 检查 API 兼容性。可以在构建时使用 `VITE_APP_VERSION` 覆盖面板版本。
+
+如果面板通过 HTTPS 提供服务，而后端是明文 HTTP，浏览器会以 Mixed Content 拦截所有 `/api/*` 请求与 `ws://` 控制台连接；这种组合下需要给后端起 HTTPS/WSS，或让面板走同源反向代理。
 
 后端实现、部署、环境变量和接口契约由独立后端仓库维护，本仓库不再复制后端说明：
 

@@ -57,24 +57,40 @@ pnpm preview
 
 ## API 配置
 
-后端地址通过环境变量 `VITE_API_BASE_URL` 配置，不再写死在代码里：
+后端地址通过 `VITE_API_BASE_URL` 配置：
+
+| 值 | 含义 |
+| --- | --- |
+| `/`（默认） | **同源**：请求打到面板自己的源，由同源反代把 `/api/*` 转给后端 |
+| `https://api.example.com` | 后端在另一个源（两端协议须一致，且后端要允许 CORS） |
+| 不设置 | 同样默认同源（`window.location.origin`） |
 
 | 文件 | 用途 |
 | --- | --- |
-| `.env.production` | 生产构建（`pnpm build` / `pnpm run deploy`）使用的后端地址 |
+| `.env.production` | 生产构建（`pnpm build` / `pnpm run deploy`）使用的后端地址，默认 `/` |
 | `.env.example` | 变量说明；复制为 `.env.local` 可覆盖本地开发地址 |
-| `src/api/client.ts` | 未配置时的兜底默认值 `DEFAULT_API_BASE_URL` |
+| `src/api/client.ts` | 解析逻辑与兜底默认值 `DEFAULT_API_BASE_URL` |
+
+**推荐部署方式**：面板静态文件 + `/api` 反代挂在**同一个域名/端口**后面（后端仓库
+`docker-compose.yml` 里的 `terraria-panel` 服务就是这个）。请求走相对路径，既没有
+Mixed Content，也不需要 CORS。
 
 ```bash
-# .env.production
-VITE_API_BASE_URL=http://117.72.197.18:8080
+# .env.production —— 同源部署（推荐）
+VITE_API_BASE_URL=/
+
+# 单独部署到别的源（例如 Cloudflare Workers）时必须写死后端域名，
+# 否则 `/` 会让面板去请求自己源下的 /api/* 而 404：
+VITE_API_BASE_URL=https://terraria-api.tyrantblue.xyz
 ```
 
-注意：Vite 在**构建时**把 `VITE_*` 变量内联进产物，所以改地址必须重新构建并重新部署，改完 `.env` 不会影响已经发布的 bundle。值不要带结尾斜杠（代码会自行去掉）。留空则回退到默认地址。
+注意：Vite 在**构建时**把 `VITE_*` 变量内联进产物，所以改地址必须重新构建并重新部署，改完 `.env` 不会影响已经发布的 bundle。值不要带结尾斜杠（代码会自行去掉）。
 
 面板请求会携带 `X-Client-Version`，并在启动时调用 `/api/meta` 检查 API 兼容性。可以在构建时使用 `VITE_APP_VERSION` 覆盖面板版本。
 
-如果面板通过 HTTPS 提供服务，而后端是明文 HTTP，浏览器会以 Mixed Content 拦截所有 `/api/*` 请求与 `ws://` 控制台连接；这种组合下需要给后端起 HTTPS/WSS，或让面板走同源反向代理。
+> 面板是纯 SPA，API 请求由**浏览器**直接发出。面板走 HTTPS 却直接调
+> `http://IP:8080` 会被浏览器以 Mixed Content 拦掉（给裸 IP 配有效证书也走不通），
+> 所以跨源时两端必须同为 HTTPS；更省事的做法就是上面的同源反代。
 
 后端实现、部署、环境变量和接口契约由独立后端仓库维护，本仓库不再复制后端说明：
 

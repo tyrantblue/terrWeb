@@ -1,28 +1,51 @@
 /**
- * Fallback used when `VITE_API_BASE_URL` is not set at build time.
+ * Fallback used when `VITE_API_BASE_URL` is not set at build time **and** the
+ * panel is not running in a browser (SSR / build-time evaluation).
  */
 export const DEFAULT_API_BASE_URL =
   'https://terraria-api.tyrantblue.xyz'
 
 /**
- * Vite inlines `VITE_*` variables while building, so the API origin is a
- * build-time setting: pointing the panel at another backend means running
- * the build (and deploy) again with a different value. A blank or
- * whitespace-only value falls back to the default rather than producing
- * requests against the panel's own origin.
+ * 面板的 API 源地址。
+ *
+ * 优先级：
+ *   1. `VITE_API_BASE_URL`（构建期注入）——指向任意后端，例如
+ *      `VITE_API_BASE_URL=https://api.example.com pnpm build`；
+ *      显式写 `/` 表示"就用当前源"。
+ *   2. 没有配置时**默认同源**（`window.location.origin`）。
+ *
+ * 默认同源是有意为之：把面板静态文件和 `/api` 反代挂在同一个域名/端口后面
+ * （见 docker-compose.yml 的 terraria-panel 服务），浏览器不会遇到
+ * mixed content（HTTPS 页面调 HTTP 接口）也不需要 CORS —— 零配置即可用。
+ * 只有面板和后端确实分处不同源时，才需要显式设置 `VITE_API_BASE_URL`。
  */
 function resolveApiBaseUrl(
   configured: string | undefined,
 ) {
   const trimmed = configured?.trim()
 
-  if (!trimmed) {
-    return DEFAULT_API_BASE_URL
+  if (trimmed) {
+    // 显式同源：请求走相对路径，由当前源自己路由。
+    if (trimmed === '/' || trimmed === 'same-origin') {
+      return typeof window !== 'undefined' &&
+        window.location?.origin
+        ? window.location.origin
+        : DEFAULT_API_BASE_URL
+    }
+
+    // Every caller appends an absolute path, so a trailing slash here would
+    // turn `.../base` + `/api/meta` into `.../base//api/meta`.
+    return trimmed.replace(/\/+$/, '')
   }
 
-  // Every caller appends an absolute path, so a trailing slash here would
-  // turn `.../base` + `/api/meta` into `.../base//api/meta`.
-  return trimmed.replace(/\/+$/, '')
+  if (
+    typeof window !== 'undefined' &&
+    window.location?.origin
+  ) {
+    return window.location.origin
+  }
+
+  return DEFAULT_API_BASE_URL
 }
 
 export const API_BASE_URL = resolveApiBaseUrl(
